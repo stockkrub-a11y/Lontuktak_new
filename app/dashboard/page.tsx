@@ -15,6 +15,8 @@ import {
   AlertTriangle,
   BookIcon,
   Sun,
+  Wifi,
+  WifiOff,
 } from "lucide-react"
 import { getDashboardAnalytics } from "@/lib/api"
 
@@ -26,6 +28,8 @@ export default function Dashboard() {
     out_of_stock: 4,
   })
   const [isLoading, setIsLoading] = useState(true)
+  const [backendConnected, setBackendConnected] = useState(false)
+  const [checkingConnection, setCheckingConnection] = useState(true)
 
   useEffect(() => {
     async function fetchDashboard() {
@@ -33,11 +37,16 @@ export default function Dashboard() {
         const response = await getDashboardAnalytics()
         if (response.success) {
           setDashboardData(response.data)
+          setBackendConnected(true)
+        } else {
+          setBackendConnected(false)
         }
       } catch (error) {
         console.error("[v0] Failed to fetch dashboard data:", error)
+        setBackendConnected(false)
       } finally {
         setIsLoading(false)
+        setCheckingConnection(false)
       }
     }
 
@@ -67,8 +76,27 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* User Profile */}
+          {/* User Profile with Backend Status */}
           <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#f8f5ee]">
+              {checkingConnection ? (
+                <>
+                  <div className="w-2 h-2 bg-[#938d7a] rounded-full animate-pulse" />
+                  <span className="text-xs text-[#938d7a]">Checking...</span>
+                </>
+              ) : backendConnected ? (
+                <>
+                  <Wifi className="w-4 h-4 text-[#00a63e]" />
+                  <span className="text-xs text-[#00a63e] font-medium">Backend Connected</span>
+                </>
+              ) : (
+                <>
+                  <WifiOff className="w-4 h-4 text-[#f76666]" />
+                  <span className="text-xs text-[#f76666] font-medium">Backend Offline</span>
+                </>
+              )}
+            </div>
+
             <div className="w-10 h-10 bg-[#ffd700] rounded flex items-center justify-center font-bold text-black text-sm">
               TG
             </div>

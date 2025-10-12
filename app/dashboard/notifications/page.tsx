@@ -1,5 +1,7 @@
 "use client"
 
+import type React from "react"
+
 import { useState, useEffect } from "react"
 import Link from "next/link"
 import {
@@ -49,6 +51,7 @@ export default function NotificationsPage() {
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false)
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [uploadFile, setUploadFile] = useState<File | null>(null)
 
   useEffect(() => {
     async function fetchNotifications() {
@@ -161,6 +164,27 @@ export default function NotificationsPage() {
 
   const toggleStatus = (status: NotificationStatus) => {
     setSelectedStatuses((prev) => (prev.includes(status) ? prev.filter((s) => s !== status) : [...prev, status]))
+  }
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      console.log("[v0] File selected:", file.name)
+      setUploadFile(file)
+    }
+  }
+
+  const handleUpload = async () => {
+    if (!uploadFile) {
+      alert("Please select a file to upload")
+      return
+    }
+
+    console.log("[v0] Uploading file:", uploadFile.name)
+    // TODO: Implement actual upload logic when backend endpoint is ready
+    alert("Upload functionality will be implemented when backend endpoint is ready")
+    setIsUploadModalOpen(false)
+    setUploadFile(null)
   }
 
   return (
@@ -608,7 +632,10 @@ export default function NotificationsPage() {
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-xl font-bold text-black">Upload</h3>
               <button
-                onClick={() => setIsUploadModalOpen(false)}
+                onClick={() => {
+                  setIsUploadModalOpen(false)
+                  setUploadFile(null)
+                }}
                 className="text-[#938d7a] hover:text-black transition-colors"
               >
                 <X className="w-5 h-5" />
@@ -619,16 +646,22 @@ export default function NotificationsPage() {
             <div className="border-2 border-dashed border-[#cecabf] rounded-lg p-12 mb-6">
               <div className="flex flex-col items-center justify-center gap-4">
                 <CloudUpload className="w-24 h-24 text-[#cecabf]" />
-                <p className="text-[#938d7a] text-sm">Drag a file here</p>
+                <p className="text-[#938d7a] text-sm">
+                  {uploadFile ? uploadFile.name : "Drag a file here or click Browse"}
+                </p>
               </div>
             </div>
 
             {/* Modal Actions */}
             <div className="flex gap-4">
-              <button className="flex-1 px-6 py-3 bg-white border border-[#cecabf] rounded-lg text-black font-medium hover:bg-[#f8f5ee] transition-colors">
+              <label className="flex-1 px-6 py-3 bg-white border border-[#cecabf] rounded-lg text-black font-medium hover:bg-[#f8f5ee] transition-colors text-center cursor-pointer">
                 Browse
-              </button>
-              <button className="flex-1 px-6 py-3 bg-[#cecabf] rounded-lg text-black font-medium hover:bg-[#c5c5c5] transition-colors">
+                <input type="file" accept=".csv,.xlsx,.xls" onChange={handleFileChange} className="hidden" />
+              </label>
+              <button
+                onClick={handleUpload}
+                className="flex-1 px-6 py-3 bg-[#cecabf] rounded-lg text-black font-medium hover:bg-[#c5c5c5] transition-colors"
+              >
                 Upload
               </button>
             </div>

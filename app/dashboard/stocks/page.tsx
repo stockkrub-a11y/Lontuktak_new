@@ -4,7 +4,19 @@ import type React from "react"
 
 import { useState, useEffect } from "react"
 import Link from "next/link"
-import { Search, Home, Package, TrendingUp, BookOpen, Bell, Upload, Filter, X, CloudUpload } from "lucide-react"
+import {
+  Search,
+  Home,
+  Package,
+  TrendingUp,
+  BookOpen,
+  Bell,
+  Upload,
+  Filter,
+  X,
+  CloudUpload,
+  CheckCircle2,
+} from "lucide-react"
 import { getStockLevels, trainModel } from "@/lib/api"
 
 export default function StocksPage() {
@@ -60,6 +72,7 @@ export default function StocksPage() {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
+      console.log("[v0] File selected:", file.name, "Type:", uploadType)
       if (uploadType === "sale") {
         setSalesFile(file)
       } else {
@@ -69,20 +82,31 @@ export default function StocksPage() {
   }
 
   const handleUpload = async () => {
-    if (!salesFile && uploadType === "sale") {
-      alert("Please select a sales file")
-      return
-    }
-    if (!productFile && uploadType === "product") {
-      alert("Please select a product file")
+    const currentFile = uploadType === "sale" ? salesFile : productFile
+
+    if (!currentFile) {
+      alert(`Please select a ${uploadType === "sale" ? "sales" : "product"} file`)
       return
     }
 
+    console.log("[v0] Starting upload for:", uploadType, "File:", currentFile.name)
     setIsUploading(true)
+
     try {
-      const result = await trainModel(salesFile!, productFile)
-      alert(`Upload successful! ${result.rows_uploaded} rows uploaded.`)
+      if (!productFile || !salesFile) {
+        alert(
+          `${uploadType === "product" ? "Product" : "Sales"} file uploaded successfully! Please upload the ${uploadType === "product" ? "sales" : "product"} file to complete the training.`,
+        )
+        setIsUploadModalOpen(false)
+        setIsUploading(false)
+        return
+      }
+
+      const result = await trainModel(salesFile, productFile)
+      alert(`Training successful! ${result.rows_uploaded} rows uploaded.`)
       setIsUploadModalOpen(false)
+      setSalesFile(null)
+      setProductFile(null)
       window.location.reload()
     } catch (error) {
       console.error("[v0] Upload failed:", error)
@@ -276,6 +300,32 @@ export default function StocksPage() {
               </button>
             </div>
 
+            <div className="mb-6 p-4 bg-[#f8f5ee] rounded-lg space-y-2">
+              <div className="flex items-center gap-2">
+                {productFile ? (
+                  <CheckCircle2 className="w-5 h-5 text-[#00a63e]" />
+                ) : (
+                  <div className="w-5 h-5 rounded-full border-2 border-[#cecabf]" />
+                )}
+                <p className="text-sm text-black">
+                  <strong>Product file:</strong> {productFile ? productFile.name : "Not uploaded"}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                {salesFile ? (
+                  <CheckCircle2 className="w-5 h-5 text-[#00a63e]" />
+                ) : (
+                  <div className="w-5 h-5 rounded-full border-2 border-[#cecabf]" />
+                )}
+                <p className="text-sm text-black">
+                  <strong>Sales file:</strong> {salesFile ? salesFile.name : "Not uploaded"}
+                </p>
+              </div>
+              <p className="text-xs text-[#938d7a] mt-3 pt-3 border-t border-[#cecabf]/30">
+                Note: Both files are required to train the model. Upload them in any order.
+              </p>
+            </div>
+
             {/* Upload Area */}
             <div className="border-2 border-dashed border-[#cecabf] rounded-lg p-12 mb-6">
               <div className="flex flex-col items-center justify-center gap-4">
@@ -295,7 +345,7 @@ export default function StocksPage() {
               <button
                 onClick={handleUpload}
                 disabled={isUploading}
-                className="flex-1 px-6 py-3 bg-[#cecabf] rounded-lg text-black font-medium hover:bg-[#c5c5c5] transition-colors disabled:opacity-50"
+                className="flex-1 px-6 py-3 bg-[#cecabf] rounded-lg text-black font-medium hover:bg-[#c5c5c5] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isUploading ? "Uploading..." : "Upload"}
               </button>

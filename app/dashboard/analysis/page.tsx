@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef, useEffect } from "react"
 import Link from "next/link"
 import {
   Search,
@@ -55,7 +55,7 @@ const performanceData = {
     { month: 5, value: 95 },
     { month: 6, value: 100 },
   ],
-  "Deep sleep": [
+  "Deep Sleep": [
     { month: 1, value: 100 },
     { month: 2, value: 115 },
     { month: 3, value: 105 },
@@ -63,7 +63,7 @@ const performanceData = {
     { month: 5, value: 95 },
     { month: 6, value: 130 },
   ],
-  "Long pants": [
+  "Long Pants": [
     { month: 1, value: 90 },
     { month: 2, value: 110 },
     { month: 3, value: 100 },
@@ -109,20 +109,69 @@ const incomeTableData = [
   { sku: "sad", monthsActive: 12, totalIncome: 730, avgMonthly: 730 },
 ]
 
+const allProducts = ["Shinchan Boxers", "Deep Sleep", "Long Pants", "Basic T-Shirt", "Premium Shirt"]
+
 export default function AnalysisPage() {
   const [activeTab, setActiveTab] = useState<"historical" | "performance" | "bestsellers" | "income">("historical")
-  const [selectedProducts, setSelectedProducts] = useState<string[]>(["Shinchan Boxers", "Deep sleep", "Long pants"])
+  const [selectedProducts, setSelectedProducts] = useState<string[]>(["Shinchan Boxers", "Deep Sleep", "Long Pants"])
   const [showProductDropdown, setShowProductDropdown] = useState(false)
+  const [productSearch, setProductSearch] = useState("")
+  const dropdownRef = useRef<HTMLDivElement>(null)
 
-  const allProducts = ["Shinchan Boxers", "Deep Sleep", "Long pants", "Basic T-Shirt", "Premium Shirt"]
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowProductDropdown(false)
+      }
+    }
+
+    if (showProductDropdown) {
+      document.addEventListener("mousedown", handleClickOutside)
+    }
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside)
+    }
+  }, [showProductDropdown])
 
   const toggleProduct = (product: string) => {
-    if (selectedProducts.includes(product)) {
-      setSelectedProducts(selectedProducts.filter((p) => p !== product))
-    } else {
-      setSelectedProducts([...selectedProducts, product])
-    }
+    console.log("[v0] Toggle called for:", product)
+    console.log("[v0] Current selected:", selectedProducts)
+
+    setSelectedProducts((prev) => {
+      if (prev.includes(product)) {
+        if (prev.length > 1) {
+          const newSelected = prev.filter((p) => p !== product)
+          console.log("[v0] Removed product, new selected:", newSelected)
+          return newSelected
+        }
+        console.log("[v0] Cannot remove last product")
+        return prev
+      } else {
+        if (prev.length < 3) {
+          const newSelected = [...prev, product]
+          console.log("[v0] Added product, new selected:", newSelected)
+          return newSelected
+        }
+        console.log("[v0] Cannot add more than 3 products")
+        return prev
+      }
+    })
   }
+
+  const filteredProducts = allProducts.filter((product) => product.toLowerCase().includes(productSearch.toLowerCase()))
+
+  const getFilteredPerformanceData = () => {
+    const filtered: any = {}
+    selectedProducts.forEach((product) => {
+      if (performanceData[product as keyof typeof performanceData]) {
+        filtered[product] = performanceData[product as keyof typeof performanceData]
+      }
+    })
+    return filtered
+  }
+
+  const filteredPerformanceData = getFilteredPerformanceData()
 
   return (
     <div className="min-h-screen bg-[#f8f5ee]">
@@ -334,19 +383,68 @@ export default function AnalysisPage() {
             <div className="bg-white rounded-lg p-6 border border-[#cecabf]/30">
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-xl font-bold text-black">Performance Comparison (Top 3 SKUs)</h3>
-                <div className="flex gap-2">
-                  <button className="px-4 py-2 bg-[#cecabf] rounded-lg text-sm font-medium text-black flex items-center gap-2">
-                    <Package2 className="w-4 h-4" />
-                    Product 1
-                  </button>
-                  <button className="px-4 py-2 bg-white border border-[#cecabf] rounded-lg text-sm font-medium text-black flex items-center gap-2">
-                    <Package2 className="w-4 h-4" />
-                    Product 2
-                  </button>
-                  <button className="px-4 py-2 bg-white border border-[#cecabf] rounded-lg text-sm font-medium text-black flex items-center gap-2">
-                    <Package2 className="w-4 h-4" />
-                    Product 3
-                  </button>
+                <div className="flex gap-2 relative" ref={dropdownRef}>
+                  {selectedProducts.slice(0, 3).map((product, index) => (
+                    <button
+                      key={product}
+                      onClick={() => setShowProductDropdown(!showProductDropdown)}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium text-black flex items-center gap-2 transition-all ${
+                        index === 0
+                          ? "bg-[#cecabf] hover:bg-[#b8b3a8]"
+                          : "bg-white border border-[#cecabf] hover:bg-[#efece3]"
+                      }`}
+                    >
+                      <Package2 className="w-4 h-4" />
+                      Product {index + 1}
+                    </button>
+                  ))}
+
+                  {showProductDropdown && (
+                    <div className="absolute top-full right-0 mt-2 w-64 bg-white border border-[#cecabf] rounded-lg shadow-lg z-10">
+                      <div className="p-3 border-b border-[#efece3]">
+                        <input
+                          type="text"
+                          placeholder="Search products..."
+                          value={productSearch}
+                          onChange={(e) => setProductSearch(e.target.value)}
+                          className="w-full px-3 py-2 bg-[#f8f5ee] rounded border-none outline-none text-sm"
+                        />
+                      </div>
+                      <div className="max-h-64 overflow-y-auto">
+                        {filteredProducts.length > 0 ? (
+                          filteredProducts.map((product) => {
+                            const isSelected = selectedProducts.includes(product)
+                            const canSelect = selectedProducts.length < 3 || isSelected
+
+                            return (
+                              <button
+                                key={product}
+                                onClick={() => {
+                                  if (canSelect || isSelected) {
+                                    toggleProduct(product)
+                                  }
+                                }}
+                                disabled={!canSelect && !isSelected}
+                                className={`w-full text-left px-4 py-3 hover:bg-[#f8f5ee] transition-colors ${
+                                  isSelected ? "bg-[#efece3] font-medium" : ""
+                                } ${!canSelect && !isSelected ? "opacity-50 cursor-not-allowed" : ""}`}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <span className="text-sm text-black">{product}</span>
+                                  {isSelected && <span className="text-xs text-green-600">✓</span>}
+                                </div>
+                              </button>
+                            )
+                          })
+                        ) : (
+                          <div className="px-4 py-3 text-sm text-[#938d7a] text-center">No products found</div>
+                        )}
+                      </div>
+                      <div className="p-3 border-t border-[#efece3] text-xs text-[#938d7a]">
+                        {selectedProducts.length}/3 products selected
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -356,9 +454,15 @@ export default function AnalysisPage() {
                     <CartesianGrid strokeDasharray="3 3" stroke="#efece3" />
                     <XAxis type="number" dataKey="month" name="Month" domain={[0, 7]} stroke="#938d7a" />
                     <YAxis type="number" dataKey="value" name="Value" domain={[0, 250]} stroke="#938d7a" />
-                    <Scatter name="Shinchan Boxers" data={performanceData["Shinchan Boxers"]} fill="#ef4444" />
-                    <Scatter name="Deep sleep" data={performanceData["Deep sleep"]} fill="#10b981" />
-                    <Scatter name="Long pants" data={performanceData["Long pants"]} fill="#f59e0b" />
+                    {selectedProducts.includes("Shinchan Boxers") && (
+                      <Scatter name="Shinchan Boxers" data={performanceData["Shinchan Boxers"]} fill="#ef4444" />
+                    )}
+                    {selectedProducts.includes("Deep Sleep") && (
+                      <Scatter name="Deep Sleep" data={performanceData["Deep Sleep"]} fill="#10b981" />
+                    )}
+                    {selectedProducts.includes("Long Pants") && (
+                      <Scatter name="Long Pants" data={performanceData["Long Pants"]} fill="#f59e0b" />
+                    )}
                     <Legend />
                   </ScatterChart>
                 </ResponsiveContainer>
@@ -375,24 +479,30 @@ export default function AnalysisPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    <tr className="border-b border-[#efece3]">
-                      <td className="py-3 px-4 text-sm text-[#ef4444] font-medium">sdakn</td>
-                      <td className="py-3 px-4 text-sm text-black">Shinchan</td>
-                      <td className="py-3 px-4 text-sm text-black text-right">1245</td>
-                      <td className="py-3 px-4 text-sm text-black text-right">฿730</td>
-                    </tr>
-                    <tr className="border-b border-[#efece3]">
-                      <td className="py-3 px-4 text-sm text-[#10b981] font-medium">sdakn</td>
-                      <td className="py-3 px-4 text-sm text-black">Deep sleep</td>
-                      <td className="py-3 px-4 text-sm text-black text-right">892</td>
-                      <td className="py-3 px-4 text-sm text-black text-right">฿730</td>
-                    </tr>
-                    <tr>
-                      <td className="py-3 px-4 text-sm text-[#f59e0b] font-medium">JN003</td>
-                      <td className="py-3 px-4 text-sm text-black">Long pants</td>
-                      <td className="py-3 px-4 text-sm text-black text-right">567</td>
-                      <td className="py-3 px-4 text-sm text-black text-right">฿730</td>
-                    </tr>
+                    {selectedProducts.includes("Shinchan Boxers") && (
+                      <tr className="border-b border-[#efece3]">
+                        <td className="py-3 px-4 text-sm text-[#ef4444] font-medium">sdakn</td>
+                        <td className="py-3 px-4 text-sm text-black">Shinchan Boxers</td>
+                        <td className="py-3 px-4 text-sm text-black text-right">1245</td>
+                        <td className="py-3 px-4 text-sm text-black text-right">฿730</td>
+                      </tr>
+                    )}
+                    {selectedProducts.includes("Deep Sleep") && (
+                      <tr className="border-b border-[#efece3]">
+                        <td className="py-3 px-4 text-sm text-[#10b981] font-medium">sdakn</td>
+                        <td className="py-3 px-4 text-sm text-black">Deep Sleep</td>
+                        <td className="py-3 px-4 text-sm text-black text-right">892</td>
+                        <td className="py-3 px-4 text-sm text-black text-right">฿730</td>
+                      </tr>
+                    )}
+                    {selectedProducts.includes("Long Pants") && (
+                      <tr>
+                        <td className="py-3 px-4 text-sm text-[#f59e0b] font-medium">JN003</td>
+                        <td className="py-3 px-4 text-sm text-black">Long Pants</td>
+                        <td className="py-3 px-4 text-sm text-black text-right">567</td>
+                        <td className="py-3 px-4 text-sm text-black text-right">฿730</td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
