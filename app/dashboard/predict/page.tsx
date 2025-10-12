@@ -1,0 +1,320 @@
+"use client"
+
+import { useState } from "react"
+import Link from "next/link"
+import { Search, Home, Package, TrendingUp, BookOpen, Bell, Filter, X, Clock } from "lucide-react"
+import { predictSales } from "@/lib/api"
+
+interface ForecastData {
+  sku: string
+  forecastDate: string
+  predictedSales: string
+  currentSale: string
+  currentDate: string
+}
+
+export default function PredictPage() {
+  const [isPredictModalOpen, setIsPredictModalOpen] = useState(false)
+  const [selectedTimeRange, setSelectedTimeRange] = useState("1 Month")
+  const [customMonths, setCustomMonths] = useState("")
+  const [searchQuery, setSearchQuery] = useState("")
+  const [forecastData, setForecastData] = useState<ForecastData[]>([])
+  const [isLoading, setIsLoading] = useState(false)
+
+  const timeRangeOptions = ["1 Month", "2 Month", "3 Month", "4 Month", "5 Month", "6 Month", "1 Year", "Option"]
+
+  const handlePredict = async () => {
+    const months =
+      selectedTimeRange === "Option"
+        ? Number.parseInt(customMonths) || 1
+        : selectedTimeRange === "1 Year"
+          ? 12
+          : Number.parseInt(selectedTimeRange.split(" ")[0])
+
+    setIsLoading(true)
+    try {
+      const response = await predictSales(months)
+      const mapped: ForecastData[] = response.forecast.map((item) => ({
+        sku: item.product_sku,
+        forecastDate: new Date(item.forecast_date).toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
+        predictedSales: `฿${(item.predicted_sales / 1000).toFixed(1)}k`,
+        currentSale: `฿${(item.current_sales / 1000).toFixed(1)}k`,
+        currentDate: new Date(item.current_date_col).toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        }),
+      }))
+      setForecastData(mapped)
+      setIsPredictModalOpen(false)
+    } catch (error) {
+      console.error("[v0] Prediction failed:", error)
+      alert(`Prediction failed: ${error instanceof Error ? error.message : "Unknown error"}`)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleReset = () => {
+    setSelectedTimeRange("1 Month")
+    setCustomMonths("")
+  }
+
+  const handleExportExcel = () => {
+    const headers = ["Product SKU", "Forecast Date", "Predicted Sales", "Current Sale", "Current Date"]
+    const csvData = forecastData.map((row) => [
+      row.sku,
+      row.forecastDate,
+      row.predictedSales,
+      row.currentSale,
+      row.currentDate,
+    ])
+
+    const csvContent = [headers.join(","), ...csvData.map((row) => row.join(","))].join("\n")
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
+    const link = document.createElement("a")
+    const url = URL.createObjectURL(blob)
+    link.setAttribute("href", url)
+    link.setAttribute("download", `sales_forecast_${new Date().toISOString().split("T")[0]}.csv`)
+    link.style.visibility = "hidden"
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
+  const filteredData = forecastData.filter((item) => item.sku.toLowerCase().includes(searchQuery.toLowerCase()))
+
+  return (
+    <div className="min-h-screen bg-[#f8f5ee]">
+      {/* Header */}
+      <header className="bg-white border-b border-[#efece3] px-6 py-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-serif text-black">Lon TukTak</h1>
+            <p className="text-xs text-[#938d7a]">Stock Management</p>
+          </div>
+
+          <div className="flex-1 max-w-xl mx-8">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#938d7a]" />
+              <input
+                type="text"
+                placeholder="Search for stocks & more"
+                className="w-full pl-10 pr-4 py-2 bg-[#f8f5ee] rounded-lg border-none outline-none text-sm text-black placeholder:text-[#938d7a] focus:ring-2 focus:ring-[#938d7a]/20"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-[#ffd700] rounded flex items-center justify-center font-bold text-black text-sm">
+              TG
+            </div>
+            <div>
+              <p className="text-sm font-medium text-black">Toogleton</p>
+              <p className="text-xs text-[#938d7a]">Toogletons@gmail.com</p>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <div className="flex">
+        {/* Sidebar Navigation */}
+        <aside className="w-52 bg-[#efece3] min-h-[calc(100vh-73px)] p-4">
+          <p className="text-xs text-[#938d7a] mb-4 px-3">Navigation</p>
+          <nav className="space-y-1">
+            <Link
+              href="/dashboard"
+              className="flex items-center gap-3 px-3 py-2.5 text-[#1e1e1e] hover:bg-white/50 rounded-lg transition-colors"
+            >
+              <Home className="w-5 h-5" />
+              <span>Home</span>
+            </Link>
+            <Link
+              href="/dashboard/stocks"
+              className="flex items-center gap-3 px-3 py-2.5 text-[#1e1e1e] hover:bg-white/50 rounded-lg transition-colors"
+            >
+              <Package className="w-5 h-5" />
+              <span>Stocks</span>
+            </Link>
+            <Link
+              href="/dashboard/predict"
+              className="flex items-center gap-3 px-3 py-2.5 bg-white rounded-lg text-black font-medium"
+            >
+              <TrendingUp className="w-5 h-5" />
+              <span>Predict</span>
+            </Link>
+            <Link
+              href="/dashboard/analysis"
+              className="flex items-center gap-3 px-3 py-2.5 text-[#1e1e1e] hover:bg-white/50 rounded-lg transition-colors"
+            >
+              <BookOpen className="w-5 h-5" />
+              <span>Analysis</span>
+            </Link>
+            <Link
+              href="/dashboard/notifications"
+              className="flex items-center gap-3 px-3 py-2.5 text-[#1e1e1e] hover:bg-white/50 rounded-lg transition-colors"
+            >
+              <Bell className="w-5 h-5" />
+              <span>Notifications</span>
+            </Link>
+          </nav>
+        </aside>
+
+        {/* Main Content */}
+        <main className="flex-1 p-8">
+          <div className="mb-8">
+            <h2 className="text-3xl font-bold text-black mb-2">Predict Sales</h2>
+            <p className="text-[#938d7a]">Monitor your sales forecast</p>
+          </div>
+
+          {/* Sales Forecast Section */}
+          <div className="bg-white rounded-lg p-6 border border-[#cecabf]/30 mb-6">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-bold text-black">Sales Forecast</h3>
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#938d7a]" />
+                  <input
+                    type="text"
+                    placeholder="Search products..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-10 pr-4 py-2 bg-[#f8f5ee] rounded-lg border-none outline-none text-sm text-black placeholder:text-[#938d7a] focus:ring-2 focus:ring-[#938d7a]/20"
+                  />
+                </div>
+                <button
+                  onClick={() => setIsPredictModalOpen(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-[#efece3] hover:bg-[#cecabf] rounded-lg transition-colors"
+                >
+                  <Filter className="w-4 h-4 text-black" />
+                  <span className="text-sm font-medium text-black">Predict System</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Forecast Table */}
+            <div className="overflow-x-auto">
+              {isLoading ? (
+                <div className="text-center py-8 text-[#938d7a]">Generating predictions...</div>
+              ) : forecastData.length === 0 ? (
+                <div className="text-center py-8 text-[#938d7a]">
+                  No forecast data. Click "Predict System" to generate predictions.
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center gap-3 mb-6">
+                    <Clock className="w-5 h-5 text-black" />
+                    <h4 className="text-lg font-semibold text-black">{selectedTimeRange} Forecast</h4>
+                  </div>
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-[#cecabf]/30">
+                        <th className="text-left py-4 px-4 text-sm font-semibold text-[#1e1e1e]">Product SKU</th>
+                        <th className="text-left py-4 px-4 text-sm font-semibold text-[#1e1e1e]">Forecast Date</th>
+                        <th className="text-left py-4 px-4 text-sm font-semibold text-[#1e1e1e]">Predicted Sales</th>
+                        <th className="text-left py-4 px-4 text-sm font-semibold text-[#1e1e1e]">Current Sale</th>
+                        <th className="text-left py-4 px-4 text-sm font-semibold text-[#1e1e1e]">Current Date</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredData.map((row, index) => (
+                        <tr key={index} className="border-b border-[#cecabf]/10 hover:bg-[#f8f5ee]/50">
+                          <td className="py-4 px-4 text-black font-medium">{row.sku}</td>
+                          <td className="py-4 px-4 text-[#1e1e1e]">{row.forecastDate}</td>
+                          <td className="py-4 px-4 text-black font-semibold">{row.predictedSales}</td>
+                          <td className="py-4 px-4 text-black font-semibold">{row.currentSale}</td>
+                          <td className="py-4 px-4 text-[#1e1e1e]">{row.currentDate}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </>
+              )}
+            </div>
+          </div>
+        </main>
+      </div>
+
+      {/* Predict Function Modal */}
+      {isPredictModalOpen && (
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full p-6">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h3 className="text-xl font-bold text-black">Predict Function</h3>
+                <p className="text-sm text-[#938d7a]">Choose your parameter</p>
+              </div>
+              <button
+                onClick={() => setIsPredictModalOpen(false)}
+                className="text-[#938d7a] hover:text-black transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Time Range Selection */}
+            <div className="mb-6">
+              <h4 className="text-sm font-semibold text-black mb-3">Time Range</h4>
+              <div className="flex flex-wrap gap-2">
+                {timeRangeOptions.map((option) => (
+                  <button
+                    key={option}
+                    onClick={() => setSelectedTimeRange(option)}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      selectedTimeRange === option
+                        ? "bg-[#cecabf] text-black"
+                        : "bg-[#efece3] text-[#1e1e1e] hover:bg-[#cecabf]/50"
+                    }`}
+                  >
+                    {option}
+                  </button>
+                ))}
+              </div>
+
+              {/* Custom Month Input */}
+              {selectedTimeRange === "Option" && (
+                <div className="mt-4">
+                  <label className="block text-sm font-medium text-black mb-2">Enter number of months:</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="24"
+                    value={customMonths}
+                    onChange={(e) => setCustomMonths(e.target.value)}
+                    placeholder="Enter months (e.g., 8)"
+                    className="w-full px-4 py-2 bg-[#f8f5ee] rounded-lg border border-[#cecabf] outline-none text-black placeholder:text-[#938d7a] focus:ring-2 focus:ring-[#938d7a]/20"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleReset}
+                className="px-4 py-2 text-sm font-medium text-black hover:bg-[#efece3] rounded-lg transition-colors"
+              >
+                Reset
+              </button>
+              <button
+                onClick={handleExportExcel}
+                disabled={forecastData.length === 0}
+                className="px-4 py-2 text-sm font-medium text-black hover:bg-[#efece3] rounded-lg transition-colors disabled:opacity-50"
+              >
+                Export Excel
+              </button>
+              <button
+                onClick={handlePredict}
+                disabled={isLoading}
+                className="flex-1 px-6 py-2 bg-[#cecabf] hover:bg-[#b4bbcb] text-black font-medium rounded-lg transition-colors disabled:opacity-50"
+              >
+                {isLoading ? "Predicting..." : "Predict"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
