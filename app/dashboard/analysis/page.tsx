@@ -36,7 +36,7 @@ import {
   getAnalysisPerformance,
   getAnalysisBestSellers,
   getAnalysisTotalIncome,
-  getAnalysisBaseSKUs, // Added import for base SKUs
+  getAnalysisBaseSKUs,
 } from "@/lib/api"
 
 const allProducts = ["Shinchan Boxers", "Deep Sleep", "Long Pants", "Basic T-Shirt", "Premium Shirt"]
@@ -79,18 +79,10 @@ export default function AnalysisPage() {
 
     setIsLoading(true)
     try {
-      console.log("[v0] Loading historical sales for SKU:", historicalSku)
       const data = await getAnalysisHistoricalSales(historicalSku)
-      console.log("[v0] Historical sales response:", data)
-      console.log("[v0] Response success:", data.success)
-      console.log("[v0] Chart data length:", data.chart_data?.length)
-      console.log("[v0] Chart data:", JSON.stringify(data.chart_data))
-      console.log("[v0] Sizes:", data.sizes)
-      console.log("[v0] Table data length:", data.table_data?.length)
 
       if (data.success) {
         setHistoricalData(data)
-        console.log("[v0] Historical data set successfully")
         setBackendConnected(true)
         setShowOfflineBanner(false)
       } else {
@@ -98,7 +90,7 @@ export default function AnalysisPage() {
         setBackendConnected(true)
       }
     } catch (error) {
-      console.error("[v0] Error loading historical sales:", error)
+      console.error("Error loading historical sales:", error)
       setBackendConnected(false)
       setShowOfflineBanner(true)
       setHistoricalData(null)
@@ -115,7 +107,6 @@ export default function AnalysisPage() {
     }
 
     try {
-      console.log("[v0] Fetching SKU suggestions for:", searchTerm)
       const data = await getAnalysisBaseSKUs(searchTerm)
 
       if (data.success && data.base_skus.length > 0) {
@@ -126,7 +117,7 @@ export default function AnalysisPage() {
         setShowSkuDropdown(false)
       }
     } catch (error) {
-      console.error("[v0] Error fetching SKU suggestions:", error)
+      console.error("Error fetching SKU suggestions:", error)
       setSkuSuggestions([])
       setShowSkuDropdown(false)
     }
@@ -146,9 +137,7 @@ export default function AnalysisPage() {
   const loadPerformanceComparison = async () => {
     setIsLoading(true)
     try {
-      console.log("[v0] Loading performance comparison for:", selectedProducts)
       const data = await getAnalysisPerformance(selectedProducts)
-      console.log("[v0] Performance comparison response:", data)
 
       if (data.success) {
         setPerformanceData(data)
@@ -159,7 +148,7 @@ export default function AnalysisPage() {
         setBackendConnected(true)
       }
     } catch (error) {
-      console.error("[v0] Error loading performance comparison:", error)
+      console.error("Error loading performance comparison:", error)
       setBackendConnected(false)
       setShowOfflineBanner(true)
       setPerformanceData(null)
@@ -174,9 +163,7 @@ export default function AnalysisPage() {
       const validYear = Number.isNaN(bestSellersYear) ? new Date().getFullYear() : bestSellersYear
       const validMonth = Number.isNaN(bestSellersMonth) ? new Date().getMonth() + 1 : bestSellersMonth
 
-      console.log("[v0] Loading best sellers for:", validYear, validMonth)
       const data = await getAnalysisBestSellers(validYear, validMonth, 10)
-      console.log("[v0] Best sellers response:", data)
 
       if (data.success) {
         setBestSellersData(data.data)
@@ -187,7 +174,7 @@ export default function AnalysisPage() {
         setBackendConnected(true)
       }
     } catch (error) {
-      console.error("[v0] Error loading best sellers:", error)
+      console.error("Error loading best sellers:", error)
       setBackendConnected(false)
       setShowOfflineBanner(true)
       setBestSellersData([])
@@ -199,9 +186,7 @@ export default function AnalysisPage() {
   const loadTotalIncome = async () => {
     setIsLoading(true)
     try {
-      console.log("[v0] Loading total income...")
       const data = await getAnalysisTotalIncome()
-      console.log("[v0] Total income response:", data)
 
       if (data.success) {
         setTotalIncomeData(data)
@@ -212,7 +197,7 @@ export default function AnalysisPage() {
         setBackendConnected(true)
       }
     } catch (error) {
-      console.error("[v0] Error loading total income:", error)
+      console.error("Error loading total income:", error)
       setBackendConnected(false)
       setShowOfflineBanner(true)
       setTotalIncomeData(null)
@@ -254,25 +239,16 @@ export default function AnalysisPage() {
   }, [showProductDropdown])
 
   const toggleProduct = (product: string) => {
-    console.log("[v0] Toggle called for:", product)
-    console.log("[v0] Current selected:", selectedProducts)
-
     setSelectedProducts((prev) => {
       if (prev.includes(product)) {
         if (prev.length > 1) {
-          const newSelected = prev.filter((p) => p !== product)
-          console.log("[v0] Removed product, new selected:", newSelected)
-          return newSelected
+          return prev.filter((p) => p !== product)
         }
-        console.log("[v0] Cannot remove last product")
         return prev
       } else {
         if (prev.length < 3) {
-          const newSelected = [...prev, product]
-          console.log("[v0] Added product, new selected:", newSelected)
-          return newSelected
+          return [...prev, product]
         }
-        console.log("[v0] Cannot add more than 3 products")
         return prev
       }
     })

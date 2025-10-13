@@ -815,7 +815,8 @@ async def clear_forecasts():
 @app.get("/analysis/historical")
 async def get_historical_sales(sku: str = Query(...)):
     """
-    Get historical sales size mix data for a product using data_analyzer.size_mix_pivot
+    Get historical sales data for a product directly from base_data
+    No complex processing - just raw data grouped by date and size
     """
     try:
         print(f"[Backend] Fetching historical sales for SKU: {sku}")
@@ -830,38 +831,30 @@ async def get_historical_sales(sku: str = Query(...)):
             }
         
         try:
-            # Query base_data table
-            query = """
+            # Extract base SKU (first 3 parts)
+            sku_parts = sku.split('-')
+            base_sku = '-'.join(sku_parts[:3]) if len(sku_parts) >= 3 else sku
+            
+            print(f"[Backend] Searching for base SKU: {base_sku}")
+            
+            # Query all SKUs that start with the base SKU
+            query = f"""
                 SELECT 
-                    product_sku as "Product_SKU",
-                    product_name as "Product_name",
-                    sales_date as "Date",
-                    sales_year as "Year",
-                    sales_month as "Month",
-                    total_quantity as "Total_quantity"
+                    product_sku,
+                    product_name,
+                    sales_date,
+                    sales_year,
+                    sales_month,
+                    total_quantity
                 FROM base_data
-                ORDER BY sales_date ASC
+                WHERE product_sku LIKE '{base_sku}%'
+                ORDER BY sales_date ASC, product_sku ASC
             """
             
             df = pd.read_sql(query, engine)
             print(f"[Backend] Retrieved {len(df)} rows from base_data")
-            print(f"[Backend] DataFrame columns: {df.columns.tolist()}")
             
             if df.empty:
-                return {
-                    "success": False,
-                    "message": "No data available. Please upload sales data first.",
-                    "chart_data": [],
-                    "table_data": [],
-                    "sizes": []
-                }
-            
-            # Use data_analyzer.size_mix_pivot to get size mix data
-            print(f"[Backend] Calling size_mix_pivot for SKU: {sku}")
-            pivot_df = size_mix_pivot(df, sku)
-            print(f"[Backend] Pivot result shape: {pivot_df.shape}")
-            
-            if pivot_df.empty:
                 return {
                     "success": False,
                     "message": f"No data found for SKU: {sku}",
@@ -870,38 +863,54 @@ async def get_historical_sales(sku: str = Query(...)):
                     "sizes": []
                 }
             
-            # Convert pivot to chart format
+            # Extract size from SKU (everything after base SKU)
+            df['size'] = df['product_sku'].apply(lambda x: '-'.join(x.split('-')[3:]) if len(x.split('-')) > 3 else 'Standard')
+            
+            # Group by date and size
+            df['year_month'] = pd.to_datetime(df['sales_date']).dt.to_period('M')
+            grouped = df.groupby(['year_month', 'size'])['total_quantity'].sum().reset_index()
+            
+            # Pivot to get sizes as columns
+            pivot = grouped.pivot(index='year_month', columns='size', values='total_quantity').fillna(0)
+            
+            # Get unique sizes
+            sizes = list(pivot.columns)
+            print(f"[Backend] Found {len(sizes)} sizes: {sizes}")
+            
+            # Convert to chart format
             chart_data = []
-            for date_idx, row in pivot_df.iterrows():
+            for date_idx, row in pivot.iterrows():
                 month_data = {
-                    "month": date_idx.strftime("%Y-%m") if pd.notna(date_idx) else "Unknown"
+                    "month": str(date_idx)
                 }
-                for size in pivot_df.columns:
-                    month_data[size] = int(row[size]) if pd.notna(row[size]) else 0
+                for size in sizes:
+                    month_data[size] = int(row[size])
                 chart_data.append(month_data)
             
-            # Convert pivot to table format
+            # Convert to table format
             table_data = []
-            for date_idx, row in pivot_df.iterrows():
+            for date_idx, row in pivot.iterrows():
                 row_data = {
-                    "date": date_idx.strftime("%Y-%m-%d") if pd.notna(date_idx) else "Unknown"
+                    "date": str(date_idx)
                 }
-                for size in pivot_df.columns:
-                    row_data[size] = int(row[size]) if pd.notna(row[size]) else 0
+                for size in sizes:
+                    row_data[size] = int(row[size])
                 table_data.append(row_data)
             
-            print(f"[Backend] ✅ Retrieved historical sales for {sku}: {len(chart_data)} months")
+            print(f"[Backend] ✅ Retrieved historical sales: {len(chart_data)} months, {len(sizes)} sizes")
             
             return {
                 "success": True,
                 "message": "Historical sales data retrieved successfully",
                 "chart_data": chart_data,
                 "table_data": table_data,
-                "sizes": list(pivot_df.columns)
+                "sizes": sizes
             }
             
         except Exception as e:
             print(f"[Backend] Error querying historical sales: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return {
                 "success": False,
                 "message": f"Error: {str(e)}",
