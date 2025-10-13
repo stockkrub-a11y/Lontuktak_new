@@ -663,7 +663,7 @@ async def predict_sales(n_forecast: int = Query(default=3, ge=1, le=12)):
                     "product_sku": row['product_sku'],
                     "forecast_date": row['forecast_date'].strftime("%Y-%m-%d") if pd.notna(row['forecast_date']) else None,
                     "predicted_sales": float(row['predicted_sales']) if pd.notna(row['predicted_sales']) else 0,
-                    "current_sales": float(row['current_sale']) if pd.notna(row['current_sale']) else 0,
+                    "current_sales": float(row['current_sales']) if pd.notna(row['current_sales']) else 0,
                     "current_date_col": row['current_date_col'].strftime("%Y-%m-%d") if pd.notna(row['current_date_col']) else None
                 })
             
