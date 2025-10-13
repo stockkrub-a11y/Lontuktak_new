@@ -82,9 +82,15 @@ export default function AnalysisPage() {
       console.log("[v0] Loading historical sales for SKU:", historicalSku)
       const data = await getAnalysisHistoricalSales(historicalSku)
       console.log("[v0] Historical sales response:", data)
+      console.log("[v0] Response success:", data.success)
+      console.log("[v0] Chart data length:", data.chart_data?.length)
+      console.log("[v0] Chart data:", JSON.stringify(data.chart_data))
+      console.log("[v0] Sizes:", data.sizes)
+      console.log("[v0] Table data length:", data.table_data?.length)
 
       if (data.success) {
         setHistoricalData(data)
+        console.log("[v0] Historical data set successfully")
         setBackendConnected(true)
         setShowOfflineBanner(false)
       } else {
