@@ -1223,24 +1223,34 @@ async def get_base_skus(search: str = Query(default="")):
                     "base_skus": []
                 }
             
-            # Extract base SKUs (remove size suffix)
             base_skus = set()
             for sku in df['product_sku']:
-                # Split by last hyphen to remove size suffix
-                parts = str(sku).rsplit('-', 1)
-                if len(parts) > 0:
-                    base_sku = parts[0]
+                # Split by hyphen and take first 3 parts
+                # Example: "SC-THU-0004-SS-WH-FF" → "SC-THU-0004"
+                parts = str(sku).split('-')
+                if len(parts) >= 3:
+                    base_sku = '-'.join(parts[:3])
+                    base_skus.add(base_sku)
+                elif len(parts) > 0:
+                    # If less than 3 parts, use what we have
+                    base_sku = '-'.join(parts)
                     base_skus.add(base_sku)
             
             # Convert to sorted list
             base_skus_list = sorted(list(base_skus))
             
-            # Filter by search term if provided
             if search and search.strip():
                 search_upper = search.strip().upper()
+                # Extract base from search term too (in case user types full SKU)
+                search_parts = search_upper.split('-')
+                if len(search_parts) >= 3:
+                    search_base = '-'.join(search_parts[:3])
+                else:
+                    search_base = search_upper
+                
                 base_skus_list = [
                     sku for sku in base_skus_list 
-                    if search_upper in sku.upper()
+                    if sku.upper().startswith(search_base) or search_base in sku.upper()
                 ]
             
             print(f"[Backend] ✅ Found {len(base_skus_list)} base SKUs")
