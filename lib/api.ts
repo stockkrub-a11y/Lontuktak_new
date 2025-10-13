@@ -205,3 +205,82 @@ export async function getStockLevels() {
     return { success: false, data: [] }
   }
 }
+
+export async function getAnalysisHistoricalSales(sku: string) {
+  try {
+    return await apiFetch<{
+      success: boolean
+      message: string
+      chart_data: Array<Record<string, any>>
+      table_data: Array<Record<string, any>>
+      sizes: string[]
+    }>(`/analysis/historical?sku=${encodeURIComponent(sku)}`)
+  } catch (error) {
+    console.error("[v0] Failed to fetch historical sales:", error)
+    return { success: false, message: "Failed to fetch data", chart_data: [], table_data: [], sizes: [] }
+  }
+}
+
+export async function getAnalysisPerformance(skuList: string[]) {
+  try {
+    return await apiFetch<{
+      success: boolean
+      message: string
+      table_data: Array<{
+        Item: string
+        Product_name: string
+        Quantity: number
+      }>
+      chart_data: Record<string, Array<{ month: number; value: number }>>
+    }>("/analysis/performance", {
+      method: "POST",
+      body: JSON.stringify(skuList),
+    })
+  } catch (error) {
+    console.error("[v0] Failed to fetch performance comparison:", error)
+    return { success: false, message: "Failed to fetch data", table_data: [], chart_data: {} }
+  }
+}
+
+export async function getAnalysisBestSellers(year: number, month: number, topN = 10) {
+  try {
+    return await apiFetch<{
+      success: boolean
+      message: string
+      data: Array<{
+        rank: number
+        base_sku: string
+        name: string
+        size: string
+        quantity: number
+      }>
+    }>(`/analysis/best_sellers?year=${year}&month=${month}&top_n=${topN}`)
+  } catch (error) {
+    console.error("[v0] Failed to fetch best sellers:", error)
+    return { success: false, message: "Failed to fetch data", data: [] }
+  }
+}
+
+export async function getAnalysisTotalIncome() {
+  try {
+    return await apiFetch<{
+      success: boolean
+      message: string
+      table_data: Array<{
+        Product_SKU: string
+        Product_name: string
+        Months_Active: number
+        Total_Revenue_Baht: number
+        Avg_Monthly_Revenue_Baht: number
+      }>
+      chart_data: Array<{
+        month: number
+        income: number
+      }>
+      grand_total: number
+    }>("/analysis/total_income")
+  } catch (error) {
+    console.error("[v0] Failed to fetch total income:", error)
+    return { success: false, message: "Failed to fetch data", table_data: [], chart_data: [], grand_total: 0 }
+  }
+}

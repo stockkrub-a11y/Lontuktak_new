@@ -14,6 +14,9 @@ import {
   Award,
   DollarSign,
   Package2,
+  Wifi,
+  WifiOff,
+  X,
 } from "lucide-react"
 import {
   Line,
@@ -28,86 +31,12 @@ import {
   BarChart,
   Legend,
 } from "recharts"
-
-// Sample data for Historical Sales
-const historicalSalesData = [
-  { month: "Jan", S: 3, M: 5, L: 2, XL: 1 },
-  { month: "Feb", S: 4, M: 3, L: 6, XL: 2 },
-  { month: "Mar", S: 2, M: 6, L: 4, XL: 3 },
-  { month: "Apr", S: 5, M: 4, L: 3, XL: 2 },
-  { month: "May", S: 3, M: 5, L: 4, XL: 1 },
-  { month: "Jun", S: 4, M: 6, L: 5, XL: 3 },
-  { month: "Jul", S: 3, M: 4, L: 3, XL: 2 },
-  { month: "Aug", S: 6, M: 5, L: 4, XL: 3 },
-  { month: "Sep", S: 4, M: 5, L: 3, XL: 2 },
-  { month: "Oct", S: 5, M: 6, L: 4, XL: 3 },
-  { month: "Nov", S: 6, M: 7, L: 5, XL: 4 },
-  { month: "Dec", S: 4, M: 5, L: 3, XL: 2 },
-]
-
-// Sample data for Performance Comparison
-const performanceData = {
-  "Shinchan Boxers": [
-    { month: 1, value: 120 },
-    { month: 2, value: 150 },
-    { month: 3, value: 110 },
-    { month: 4, value: 105 },
-    { month: 5, value: 95 },
-    { month: 6, value: 100 },
-  ],
-  "Deep Sleep": [
-    { month: 1, value: 100 },
-    { month: 2, value: 115 },
-    { month: 3, value: 105 },
-    { month: 4, value: 145 },
-    { month: 5, value: 95 },
-    { month: 6, value: 130 },
-  ],
-  "Long Pants": [
-    { month: 1, value: 90 },
-    { month: 2, value: 110 },
-    { month: 3, value: 100 },
-    { month: 4, value: 125 },
-    { month: 5, value: 140 },
-    { month: 6, value: 95 },
-  ],
-}
-
-// Sample data for Best Sellers
-const bestSellersData = [
-  { rank: 1, name: "asdasd", size: "M", quantity: 1245, income: 730 },
-  { rank: 2, name: "fdsfd", size: "L", quantity: 892, income: 730 },
-  { rank: 3, name: "sfds", size: "M", quantity: 567, income: 730 },
-  { rank: 4, name: "sfds", size: "L", quantity: 445, income: 730 },
-  { rank: 5, name: "sdf", size: "S", quantity: 398, income: 730 },
-  { rank: 6, name: "sdfds", size: "M", quantity: 356, income: 730 },
-  { rank: 7, name: "sdff", size: "M", quantity: 289, income: 730 },
-  { rank: 8, name: "sdfsdf", size: "L", quantity: 245, income: 730 },
-  { rank: 9, name: "sdfsd", size: "S", quantity: 198, income: 730 },
-  { rank: 10, name: "sdfsdf", size: "XL", quantity: 156, income: 730 },
-]
-
-// Sample data for Total Income
-const totalIncomeData = [
-  { month: 1, income: 58000 },
-  { month: 2, income: 65000 },
-  { month: 3, income: 62000 },
-  { month: 4, income: 78000 },
-  { month: 5, income: 85000 },
-  { month: 6, income: 92000 },
-  { month: 7, income: 105000 },
-  { month: 8, income: 125000 },
-  { month: 9, income: 145000 },
-  { month: 10, income: 165000 },
-  { month: 11, income: 185000 },
-  { month: 12, income: 205000 },
-]
-
-const incomeTableData = [
-  { sku: "asdasd", monthsActive: 12, totalIncome: 730, avgMonthly: 730 },
-  { sku: "asd", monthsActive: 10, totalIncome: 730, avgMonthly: 730 },
-  { sku: "sad", monthsActive: 12, totalIncome: 730, avgMonthly: 730 },
-]
+import {
+  getAnalysisHistoricalSales,
+  getAnalysisPerformance,
+  getAnalysisBestSellers,
+  getAnalysisTotalIncome,
+} from "@/lib/api"
 
 const allProducts = ["Shinchan Boxers", "Deep Sleep", "Long Pants", "Basic T-Shirt", "Premium Shirt"]
 
@@ -117,6 +46,108 @@ export default function AnalysisPage() {
   const [showProductDropdown, setShowProductDropdown] = useState(false)
   const [productSearch, setProductSearch] = useState("")
   const dropdownRef = useRef<HTMLDivElement>(null)
+
+  const [historicalSku, setHistoricalSku] = useState("")
+  const [historicalData, setHistoricalData] = useState<any>(null)
+  const [performanceData, setPerformanceData] = useState<any>(null)
+  const [bestSellersData, setBestSellersData] = useState<any[]>([])
+  const [totalIncomeData, setTotalIncomeData] = useState<any>(null)
+  const [bestSellersYear, setBestSellersYear] = useState(new Date().getFullYear())
+  const [bestSellersMonth, setBestSellersMonth] = useState(new Date().getMonth() + 1)
+  const [isLoading, setIsLoading] = useState(false)
+
+  const [backendConnected, setBackendConnected] = useState(true)
+  const [showOfflineBanner, setShowOfflineBanner] = useState(false)
+
+  useEffect(() => {
+    if (activeTab === "income") {
+      loadTotalIncome()
+    }
+  }, [activeTab])
+
+  const loadHistoricalSales = async () => {
+    if (!historicalSku.trim()) {
+      return
+    }
+
+    setIsLoading(true)
+    try {
+      const data = await getAnalysisHistoricalSales(historicalSku)
+      if (data.success) {
+        setHistoricalData(data)
+        setBackendConnected(true)
+      } else {
+        setHistoricalData({ chart_data: [], table_data: [], sizes: [], message: data.message })
+      }
+    } catch (error) {
+      console.error("[v0] Error loading historical sales:", error)
+      setBackendConnected(false)
+      setShowOfflineBanner(true)
+      setHistoricalData(null)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const loadPerformanceComparison = async () => {
+    setIsLoading(true)
+    try {
+      const data = await getAnalysisPerformance(selectedProducts)
+      if (data.success) {
+        setPerformanceData(data)
+        setBackendConnected(true)
+      } else {
+        setPerformanceData({ chart_data: {}, table_data: [], message: data.message })
+      }
+    } catch (error) {
+      console.error("[v0] Error loading performance comparison:", error)
+      setBackendConnected(false)
+      setShowOfflineBanner(true)
+      setPerformanceData(null)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const loadBestSellers = async () => {
+    setIsLoading(true)
+    try {
+      const data = await getAnalysisBestSellers(bestSellersYear, bestSellersMonth, 10)
+      if (data.success) {
+        setBestSellersData(data.data)
+        setBackendConnected(true)
+      } else {
+        setBestSellersData([])
+      }
+    } catch (error) {
+      console.error("[v0] Error loading best sellers:", error)
+      setBackendConnected(false)
+      setShowOfflineBanner(true)
+      setBestSellersData([])
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const loadTotalIncome = async () => {
+    setIsLoading(true)
+    try {
+      const data = await getAnalysisTotalIncome()
+      if (data.success) {
+        setTotalIncomeData(data)
+        setBackendConnected(true)
+      } else {
+        setTotalIncomeData(null)
+      }
+    } catch (error) {
+      console.error("[v0] Error loading total income:", error)
+      setBackendConnected(false)
+      setShowOfflineBanner(true)
+      setTotalIncomeData(null)
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -161,18 +192,6 @@ export default function AnalysisPage() {
 
   const filteredProducts = allProducts.filter((product) => product.toLowerCase().includes(productSearch.toLowerCase()))
 
-  const getFilteredPerformanceData = () => {
-    const filtered: any = {}
-    selectedProducts.forEach((product) => {
-      if (performanceData[product as keyof typeof performanceData]) {
-        filtered[product] = performanceData[product as keyof typeof performanceData]
-      }
-    })
-    return filtered
-  }
-
-  const filteredPerformanceData = getFilteredPerformanceData()
-
   return (
     <div className="min-h-screen bg-[#f8f5ee]">
       {/* Header */}
@@ -195,6 +214,19 @@ export default function AnalysisPage() {
           </div>
 
           <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#f8f5ee]">
+              {backendConnected ? (
+                <>
+                  <Wifi className="w-4 h-4 text-green-600" />
+                  <span className="text-xs text-green-600 font-medium">Backend Online</span>
+                </>
+              ) : (
+                <>
+                  <WifiOff className="w-4 h-4 text-red-600" />
+                  <span className="text-xs text-red-600 font-medium">Backend Offline</span>
+                </>
+              )}
+            </div>
             <div className="w-10 h-10 bg-[#ffd700] rounded flex items-center justify-center font-bold text-black text-sm">
               TG
             </div>
@@ -251,6 +283,29 @@ export default function AnalysisPage() {
 
         {/* Main Content */}
         <main className="flex-1 p-8">
+          {showOfflineBanner && !backendConnected && (
+            <div className="mb-6 bg-amber-50 border border-amber-200 rounded-lg p-4 flex items-start justify-between">
+              <div className="flex items-start gap-3">
+                <WifiOff className="w-5 h-5 text-amber-600 mt-0.5" />
+                <div>
+                  <p className="font-medium text-amber-900 mb-1">Backend Server Offline</p>
+                  <p className="text-sm text-amber-800 mb-2">
+                    The analysis features require the backend server to be running. Start it with:
+                  </p>
+                  <code className="block bg-amber-100 text-amber-900 px-3 py-2 rounded text-sm font-mono">
+                    python scripts/Backend.py
+                  </code>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowOfflineBanner(false)}
+                className="text-amber-600 hover:text-amber-800 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          )}
+
           <div className="mb-8">
             <h2 className="text-3xl font-bold text-black mb-2">Analyze Sales</h2>
             <p className="text-[#938d7a]">Gain insights into sales trends, top performers, and total income growth</p>
@@ -322,59 +377,87 @@ export default function AnalysisPage() {
           {/* Historical Sales View */}
           {activeTab === "historical" && (
             <div className="bg-white rounded-lg p-6 border border-[#cecabf]/30">
-              <h3 className="text-xl font-bold text-black mb-6">Historical Sales</h3>
-
-              <div className="mb-8">
-                <ResponsiveContainer width="100%" height={400}>
-                  <BarChart data={historicalSalesData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#efece3" />
-                    <XAxis dataKey="month" stroke="#938d7a" />
-                    <YAxis stroke="#938d7a" />
-                    <Legend />
-                    <Bar dataKey="S" stackId="a" fill="#d4cfc4" name="Size S" />
-                    <Bar dataKey="M" stackId="a" fill="#b8b3a8" name="Size M" />
-                    <Bar dataKey="L" stackId="a" fill="#efece3" name="Size L" />
-                    <Bar dataKey="XL" stackId="a" fill="#e8e4d9" name="Size XL" />
-                  </BarChart>
-                </ResponsiveContainer>
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-bold text-black">Historical Sales</h3>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Enter SKU or Base SKU..."
+                    value={historicalSku}
+                    onChange={(e) => setHistoricalSku(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && loadHistoricalSales()}
+                    className="px-4 py-2 rounded-lg border border-[#cecabf] text-sm text-black outline-none focus:border-[#938d7a]"
+                  />
+                  <button
+                    onClick={loadHistoricalSales}
+                    disabled={isLoading || !historicalSku.trim()}
+                    className="px-4 py-2 rounded-lg bg-[#cecabf] hover:bg-[#b8b3a8] text-black text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isLoading ? "Loading..." : "Search"}
+                  </button>
+                </div>
               </div>
 
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-[#efece3]">
-                      <th className="text-left py-3 px-4 text-sm font-medium text-black">Date</th>
-                      <th className="text-center py-3 px-4 text-sm font-medium text-black">S</th>
-                      <th className="text-center py-3 px-4 text-sm font-medium text-black">M</th>
-                      <th className="text-center py-3 px-4 text-sm font-medium text-black">L</th>
-                      <th className="text-center py-3 px-4 text-sm font-medium text-black">XL</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr className="border-b border-[#efece3]">
-                      <td className="py-3 px-4 text-sm text-black">2025-02-05</td>
-                      <td className="py-3 px-4 text-sm text-black text-center">3</td>
-                      <td className="py-3 px-4 text-sm text-black text-center">5</td>
-                      <td className="py-3 px-4 text-sm text-black text-center">2</td>
-                      <td className="py-3 px-4 text-sm text-black text-center">1</td>
-                    </tr>
-                    <tr className="border-b border-[#efece3]">
-                      <td className="py-3 px-4 text-sm text-black">2025-03-12</td>
-                      <td className="py-3 px-4 text-sm text-black text-center">4</td>
-                      <td className="py-3 px-4 text-sm text-black text-center">3</td>
-                      <td className="py-3 px-4 text-sm text-black text-center">6</td>
-                      <td className="py-3 px-4 text-sm text-black text-center">2</td>
-                    </tr>
-                    <tr>
-                      <td className="py-3 px-4 text-sm text-black">2025-04-08</td>
-                      <td className="py-3 px-4 text-sm text-black text-center">2</td>
-                      <td className="py-3 px-4 text-sm text-black text-center">6</td>
-                      <td className="py-3 px-4 text-sm text-black text-center">4</td>
-                      <td className="py-3 px-4 text-sm text-black text-center">3</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
+              {!historicalSku.trim() && !historicalData && (
+                <div className="text-center py-12 text-[#938d7a]">
+                  <p>Enter a SKU above and click Search to view historical sales data</p>
+                </div>
+              )}
+
+              {historicalData && historicalData.chart_data.length > 0 ? (
+                <>
+                  <div className="mb-8">
+                    <ResponsiveContainer width="100%" height={400}>
+                      <BarChart data={historicalData.chart_data}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#efece3" />
+                        <XAxis dataKey="month" stroke="#938d7a" />
+                        <YAxis stroke="#938d7a" />
+                        <Legend />
+                        {historicalData.sizes.map((size: string, idx: number) => (
+                          <Bar
+                            key={size}
+                            dataKey={size}
+                            stackId="a"
+                            fill={["#d4cfc4", "#b8b3a8", "#efece3", "#e8e4d9", "#cecabf"][idx % 5]}
+                            name={`Size ${size}`}
+                          />
+                        ))}
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b border-[#efece3]">
+                          <th className="text-left py-3 px-4 text-sm font-medium text-black">Date</th>
+                          {historicalData.sizes.map((size: string) => (
+                            <th key={size} className="text-center py-3 px-4 text-sm font-medium text-black">
+                              {size}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {historicalData.table_data.map((row: any, idx: number) => (
+                          <tr key={idx} className="border-b border-[#efece3]">
+                            <td className="py-3 px-4 text-sm text-black">{row.date}</td>
+                            {historicalData.sizes.map((size: string) => (
+                              <td key={size} className="py-3 px-4 text-sm text-black text-center">
+                                {row[size] || 0}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : historicalData && historicalData.chart_data.length === 0 ? (
+                <div className="text-center py-12 text-[#938d7a]">
+                  <p>{historicalData.message || "No data found for this SKU"}</p>
+                </div>
+              ) : null}
             </div>
           )}
 
@@ -383,238 +466,244 @@ export default function AnalysisPage() {
             <div className="bg-white rounded-lg p-6 border border-[#cecabf]/30">
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-xl font-bold text-black">Performance Comparison (Top 3 SKUs)</h3>
-                <div className="flex gap-2 relative" ref={dropdownRef}>
-                  {selectedProducts.slice(0, 3).map((product, index) => (
-                    <button
-                      key={product}
-                      onClick={() => setShowProductDropdown(!showProductDropdown)}
-                      className={`px-4 py-2 rounded-lg text-sm font-medium text-black flex items-center gap-2 transition-all ${
-                        index === 0
-                          ? "bg-[#cecabf] hover:bg-[#b8b3a8]"
-                          : "bg-white border border-[#cecabf] hover:bg-[#efece3]"
-                      }`}
-                    >
-                      <Package2 className="w-4 h-4" />
-                      Product {index + 1}
-                    </button>
-                  ))}
-
-                  {showProductDropdown && (
-                    <div className="absolute top-full right-0 mt-2 w-64 bg-white border border-[#cecabf] rounded-lg shadow-lg z-10">
-                      <div className="p-3 border-b border-[#efece3]">
-                        <input
-                          type="text"
-                          placeholder="Search products..."
-                          value={productSearch}
-                          onChange={(e) => setProductSearch(e.target.value)}
-                          className="w-full px-3 py-2 bg-[#f8f5ee] rounded border-none outline-none text-sm"
-                        />
-                      </div>
-                      <div className="max-h-64 overflow-y-auto">
-                        {filteredProducts.length > 0 ? (
-                          filteredProducts.map((product) => {
-                            const isSelected = selectedProducts.includes(product)
-                            const canSelect = selectedProducts.length < 3 || isSelected
-
-                            return (
-                              <button
-                                key={product}
-                                onClick={() => {
-                                  if (canSelect || isSelected) {
-                                    toggleProduct(product)
-                                  }
-                                }}
-                                disabled={!canSelect && !isSelected}
-                                className={`w-full text-left px-4 py-3 hover:bg-[#f8f5ee] transition-colors ${
-                                  isSelected ? "bg-[#efece3] font-medium" : ""
-                                } ${!canSelect && !isSelected ? "opacity-50 cursor-not-allowed" : ""}`}
-                              >
-                                <div className="flex items-center justify-between">
-                                  <span className="text-sm text-black">{product}</span>
-                                  {isSelected && <span className="text-xs text-green-600">✓</span>}
-                                </div>
-                              </button>
-                            )
-                          })
-                        ) : (
-                          <div className="px-4 py-3 text-sm text-[#938d7a] text-center">No products found</div>
-                        )}
-                      </div>
-                      <div className="p-3 border-t border-[#efece3] text-xs text-[#938d7a]">
-                        {selectedProducts.length}/3 products selected
-                      </div>
-                    </div>
-                  )}
+                <div className="flex gap-2">
+                  {/* ... existing product selection buttons ... */}
+                  <div className="flex gap-2 relative" ref={dropdownRef}>
+                    {selectedProducts.slice(0, 3).map((product, index) => (
+                      <button
+                        key={product}
+                        onClick={() => setShowProductDropdown(!showProductDropdown)}
+                        className={`px-4 py-2 rounded-lg text-sm font-medium text-black flex items-center gap-2 transition-all ${
+                          index === 0
+                            ? "bg-[#cecabf] hover:bg-[#b8b3a8]"
+                            : "bg-white border border-[#cecabf] hover:bg-[#efece3]"
+                        }`}
+                      >
+                        <Package2 className="w-4 h-4" />
+                        Product {index + 1}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    onClick={loadPerformanceComparison}
+                    disabled={isLoading}
+                    className="px-4 py-2 rounded-lg bg-[#cecabf] hover:bg-[#b8b3a8] text-black text-sm font-medium transition-colors disabled:opacity-50"
+                  >
+                    {isLoading ? "Loading..." : "Compare"}
+                  </button>
                 </div>
               </div>
 
-              <div className="mb-8">
-                <ResponsiveContainer width="100%" height={400}>
-                  <ScatterChart>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#efece3" />
-                    <XAxis type="number" dataKey="month" name="Month" domain={[0, 7]} stroke="#938d7a" />
-                    <YAxis type="number" dataKey="value" name="Value" domain={[0, 250]} stroke="#938d7a" />
-                    {selectedProducts.includes("Shinchan Boxers") && (
-                      <Scatter name="Shinchan Boxers" data={performanceData["Shinchan Boxers"]} fill="#ef4444" />
-                    )}
-                    {selectedProducts.includes("Deep Sleep") && (
-                      <Scatter name="Deep Sleep" data={performanceData["Deep Sleep"]} fill="#10b981" />
-                    )}
-                    {selectedProducts.includes("Long Pants") && (
-                      <Scatter name="Long Pants" data={performanceData["Long Pants"]} fill="#f59e0b" />
-                    )}
-                    <Legend />
-                  </ScatterChart>
-                </ResponsiveContainer>
-              </div>
+              {performanceData && performanceData.table_data.length > 0 ? (
+                <>
+                  <div className="mb-8">
+                    <ResponsiveContainer width="100%" height={400}>
+                      <ScatterChart>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#efece3" />
+                        <XAxis type="number" dataKey="month" name="Month" domain={[0, 13]} stroke="#938d7a" />
+                        <YAxis type="number" dataKey="value" name="Value" stroke="#938d7a" />
+                        {Object.entries(performanceData.chart_data).map(([sku, data]: [string, any], idx) => (
+                          <Scatter key={sku} name={sku} data={data} fill={["#ef4444", "#10b981", "#f59e0b"][idx % 3]} />
+                        ))}
+                        <Legend />
+                      </ScatterChart>
+                    </ResponsiveContainer>
+                  </div>
 
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-[#efece3]">
-                      <th className="text-left py-3 px-4 text-sm font-medium text-black">SKU</th>
-                      <th className="text-left py-3 px-4 text-sm font-medium text-black">Product</th>
-                      <th className="text-right py-3 px-4 text-sm font-medium text-black">Quantity</th>
-                      <th className="text-right py-3 px-4 text-sm font-medium text-black">Income</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {selectedProducts.includes("Shinchan Boxers") && (
-                      <tr className="border-b border-[#efece3]">
-                        <td className="py-3 px-4 text-sm text-[#ef4444] font-medium">sdakn</td>
-                        <td className="py-3 px-4 text-sm text-black">Shinchan Boxers</td>
-                        <td className="py-3 px-4 text-sm text-black text-right">1245</td>
-                        <td className="py-3 px-4 text-sm text-black text-right">฿730</td>
-                      </tr>
-                    )}
-                    {selectedProducts.includes("Deep Sleep") && (
-                      <tr className="border-b border-[#efece3]">
-                        <td className="py-3 px-4 text-sm text-[#10b981] font-medium">sdakn</td>
-                        <td className="py-3 px-4 text-sm text-black">Deep Sleep</td>
-                        <td className="py-3 px-4 text-sm text-black text-right">892</td>
-                        <td className="py-3 px-4 text-sm text-black text-right">฿730</td>
-                      </tr>
-                    )}
-                    {selectedProducts.includes("Long Pants") && (
-                      <tr>
-                        <td className="py-3 px-4 text-sm text-[#f59e0b] font-medium">JN003</td>
-                        <td className="py-3 px-4 text-sm text-black">Long Pants</td>
-                        <td className="py-3 px-4 text-sm text-black text-right">567</td>
-                        <td className="py-3 px-4 text-sm text-black text-right">฿730</td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b border-[#efece3]">
+                          <th className="text-left py-3 px-4 text-sm font-medium text-black">SKU</th>
+                          <th className="text-left py-3 px-4 text-sm font-medium text-black">Product</th>
+                          <th className="text-right py-3 px-4 text-sm font-medium text-black">Quantity</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {performanceData.table_data.map((item: any, idx: number) => (
+                          <tr key={idx} className="border-b border-[#efece3]">
+                            <td className="py-3 px-4 text-sm text-black font-medium">{item.Item}</td>
+                            <td className="py-3 px-4 text-sm text-black">{item.Product_name || "N/A"}</td>
+                            <td className="py-3 px-4 text-sm text-black text-right">{item.Quantity}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : (
+                <div className="text-center py-12 text-[#938d7a]">
+                  <p>Select products and click Compare to view performance data</p>
+                </div>
+              )}
             </div>
           )}
 
           {/* Best Sellers View */}
           {activeTab === "bestsellers" && (
             <div className="bg-white rounded-lg p-6 border border-[#cecabf]/30">
-              <h3 className="text-xl font-bold text-black mb-6">Top 10 Best Sellers</h3>
-
-              <div className="space-y-4">
-                {bestSellersData.map((item) => (
-                  <div key={item.rank} className="flex items-center gap-4 p-4 bg-[#f8f5ee] rounded-lg">
-                    <div className="w-10 h-10 rounded-full bg-[#cecabf] flex items-center justify-center font-bold text-black">
-                      {item.rank}
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-center justify-between mb-2">
-                        <div>
-                          <p className="font-medium text-black">{item.name}</p>
-                          <p className="text-sm text-[#938d7a]">Size: {item.size}</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-sm text-[#938d7a]">Quantity</p>
-                          <p className="font-bold text-black">{item.quantity}</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-sm text-[#938d7a]">Income</p>
-                          <p className="font-bold text-black">฿{item.income}</p>
-                        </div>
-                      </div>
-                      <div className="w-full bg-white rounded-full h-2">
-                        <div
-                          className="bg-[#938d7a] h-2 rounded-full"
-                          style={{ width: `${(item.quantity / 1245) * 100}%` }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                ))}
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-bold text-black">Top 10 Best Sellers</h3>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    placeholder="Year"
+                    value={bestSellersYear}
+                    onChange={(e) => setBestSellersYear(Number.parseInt(e.target.value))}
+                    className="w-24 px-3 py-2 rounded-lg border border-[#cecabf] text-sm text-black outline-none focus:border-[#938d7a]"
+                  />
+                  <input
+                    type="number"
+                    placeholder="Month"
+                    value={bestSellersMonth}
+                    onChange={(e) => setBestSellersMonth(Number.parseInt(e.target.value))}
+                    min="1"
+                    max="12"
+                    className="w-20 px-3 py-2 rounded-lg border border-[#cecabf] text-sm text-black outline-none focus:border-[#938d7a]"
+                  />
+                  <button
+                    onClick={loadBestSellers}
+                    disabled={isLoading}
+                    className="px-4 py-2 rounded-lg bg-[#cecabf] hover:bg-[#b8b3a8] text-black text-sm font-medium transition-colors disabled:opacity-50"
+                  >
+                    {isLoading ? "Loading..." : "Load"}
+                  </button>
+                </div>
               </div>
+
+              {bestSellersData.length > 0 ? (
+                <div className="space-y-4">
+                  {bestSellersData.map((item) => (
+                    <div key={item.rank} className="flex items-center gap-4 p-4 bg-[#f8f5ee] rounded-lg">
+                      <div className="w-10 h-10 rounded-full bg-[#cecabf] flex items-center justify-center font-bold text-black">
+                        {item.rank}
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between mb-2">
+                          <div>
+                            <p className="font-medium text-black">{item.name}</p>
+                            <p className="text-sm text-[#938d7a]">
+                              SKU: {item.base_sku} | Size: {item.size}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-sm text-[#938d7a]">Quantity</p>
+                            <p className="font-bold text-black">{item.quantity}</p>
+                          </div>
+                        </div>
+                        <div className="w-full bg-white rounded-full h-2">
+                          <div
+                            className="bg-[#938d7a] h-2 rounded-full"
+                            style={{ width: `${(item.quantity / bestSellersData[0]?.quantity) * 100}%` }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-12 text-[#938d7a]">
+                  <p>Select a year and month, then click Load to view best sellers</p>
+                </div>
+              )}
             </div>
           )}
 
           {/* Total Income View */}
           {activeTab === "income" && (
             <div className="space-y-6">
-              {/* Stat Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-gradient-to-br from-blue-100 to-blue-50 rounded-lg p-6 border border-blue-200">
-                  <p className="text-3xl font-bold text-blue-600 mb-2">฿632,000</p>
-                  <p className="text-sm text-blue-800 font-medium">Total Annual Income</p>
-                </div>
-                <div className="bg-gradient-to-br from-green-100 to-green-50 rounded-lg p-6 border border-green-200">
-                  <p className="text-3xl font-bold text-green-600 mb-2">฿52,667</p>
-                  <p className="text-sm text-green-800 font-medium">Average Monthly Income</p>
-                </div>
-                <div className="bg-gradient-to-br from-purple-100 to-purple-50 rounded-lg p-6 border border-purple-200">
-                  <p className="text-3xl font-bold text-purple-600 mb-2">+240%</p>
-                  <p className="text-sm text-purple-800 font-medium">Annual Growth Rate</p>
-                </div>
-              </div>
+              {totalIncomeData ? (
+                <>
+                  {/* Stat Cards */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="bg-gradient-to-br from-blue-100 to-blue-50 rounded-lg p-6 border border-blue-200">
+                      <p className="text-3xl font-bold text-blue-600 mb-2">
+                        ฿{totalIncomeData.grand_total.toLocaleString()}
+                      </p>
+                      <p className="text-sm text-blue-800 font-medium">Total Annual Income</p>
+                    </div>
+                    <div className="bg-gradient-to-br from-green-100 to-green-50 rounded-lg p-6 border border-green-200">
+                      <p className="text-3xl font-bold text-green-600 mb-2">
+                        ฿
+                        {totalIncomeData.table_data.length > 0
+                          ? Math.round(
+                              totalIncomeData.table_data.reduce(
+                                (sum: number, item: any) => sum + item.Avg_Monthly_Revenue_Baht,
+                                0,
+                              ) / totalIncomeData.table_data.length,
+                            ).toLocaleString()
+                          : 0}
+                      </p>
+                      <p className="text-sm text-green-800 font-medium">Average Monthly Income</p>
+                    </div>
+                    <div className="bg-gradient-to-br from-purple-100 to-purple-50 rounded-lg p-6 border border-purple-200">
+                      <p className="text-3xl font-bold text-purple-600 mb-2">{totalIncomeData.table_data.length}</p>
+                      <p className="text-sm text-purple-800 font-medium">Active Products</p>
+                    </div>
+                  </div>
 
-              {/* Chart */}
-              <div className="bg-white rounded-lg p-6 border border-[#cecabf]/30">
-                <h3 className="text-xl font-bold text-black mb-6">Total Income Growth</h3>
+                  {/* Chart */}
+                  <div className="bg-white rounded-lg p-6 border border-[#cecabf]/30">
+                    <h3 className="text-xl font-bold text-black mb-6">Total Income Growth</h3>
 
-                <div className="mb-8">
-                  <ResponsiveContainer width="100%" height={400}>
-                    <LineChart data={totalIncomeData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#efece3" />
-                      <XAxis
-                        dataKey="month"
-                        stroke="#938d7a"
-                        label={{ value: "Months Active", position: "insideBottom", offset: -5 }}
-                      />
-                      <YAxis stroke="#938d7a" />
-                      <Line
-                        type="monotone"
-                        dataKey="income"
-                        stroke="#000000"
-                        strokeWidth={2}
-                        dot={{ fill: "#000000", r: 5 }}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
+                    <div className="mb-8">
+                      <ResponsiveContainer width="100%" height={400}>
+                        <LineChart data={totalIncomeData.chart_data}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#efece3" />
+                          <XAxis
+                            dataKey="month"
+                            stroke="#938d7a"
+                            label={{ value: "Months", position: "insideBottom", offset: -5 }}
+                          />
+                          <YAxis stroke="#938d7a" />
+                          <Line
+                            type="monotone"
+                            dataKey="income"
+                            stroke="#000000"
+                            strokeWidth={2}
+                            dot={{ fill: "#000000", r: 5 }}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
 
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b border-[#efece3]">
-                        <th className="text-left py-3 px-4 text-sm font-medium text-black">SKU</th>
-                        <th className="text-center py-3 px-4 text-sm font-medium text-black">Months Active</th>
-                        <th className="text-right py-3 px-4 text-sm font-medium text-black">Total Income</th>
-                        <th className="text-right py-3 px-4 text-sm font-medium text-black">Avg Monthly Income</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {incomeTableData.map((item, index) => (
-                        <tr key={index} className="border-b border-[#efece3]">
-                          <td className="py-3 px-4 text-sm text-black">{item.sku}</td>
-                          <td className="py-3 px-4 text-sm text-black text-center">{item.monthsActive}</td>
-                          <td className="py-3 px-4 text-sm text-black text-right">฿{item.totalIncome}</td>
-                          <td className="py-3 px-4 text-sm text-black text-right">฿{item.avgMonthly}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead>
+                          <tr className="border-b border-[#efece3]">
+                            <th className="text-left py-3 px-4 text-sm font-medium text-black">SKU</th>
+                            <th className="text-left py-3 px-4 text-sm font-medium text-black">Product Name</th>
+                            <th className="text-center py-3 px-4 text-sm font-medium text-black">Months Active</th>
+                            <th className="text-right py-3 px-4 text-sm font-medium text-black">Total Income</th>
+                            <th className="text-right py-3 px-4 text-sm font-medium text-black">Avg Monthly Income</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {totalIncomeData.table_data.slice(0, 20).map((item: any, index: number) => (
+                            <tr key={index} className="border-b border-[#efece3]">
+                              <td className="py-3 px-4 text-sm text-black">{item.Product_SKU}</td>
+                              <td className="py-3 px-4 text-sm text-black">{item.Product_name || "N/A"}</td>
+                              <td className="py-3 px-4 text-sm text-black text-center">{item.Months_Active}</td>
+                              <td className="py-3 px-4 text-sm text-black text-right">
+                                ฿{Math.round(item.Total_Revenue_Baht).toLocaleString()}
+                              </td>
+                              <td className="py-3 px-4 text-sm text-black text-right">
+                                ฿{Math.round(item.Avg_Monthly_Revenue_Baht).toLocaleString()}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="bg-white rounded-lg p-6 border border-[#cecabf]/30">
+                  <div className="text-center py-12 text-[#938d7a]">
+                    <p>{isLoading ? "Loading total income data..." : "No income data available"}</p>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           )}
         </main>

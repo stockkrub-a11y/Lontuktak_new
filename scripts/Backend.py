@@ -20,6 +20,7 @@ import shutil
 from Auto_cleaning import auto_cleaning, check_db_status
 from DB_server import engine
 from Predict import update_model_and_train, forcast_loop
+from data_analyzer import size_mix_pivot, performance_table, best_sellers_by_month, total_income_table
 
 # ============================================================================
 # DATABASE CONFIGURATION
@@ -325,7 +326,7 @@ async def train_model(
         raise HTTPException(status_code=500, detail=f"Training failed: {str(e)}")
 
 # ============================================================================
-# STOCK LEVELS ENDPOINT
+# STOCKLEVELS ENDPOINT
 # ============================================================================
 
 @app.get("/stock/levels")
@@ -529,11 +530,11 @@ async def get_dashboard_analytics():
                 """
                 out_of_stock = pd.read_sql(out_of_stock_query, engine).iloc[0]['count']
                 
-                # Get total sales quantity this month
+                # Get total sales quantity this month (PostgreSQL syntax)
                 sales_query = """
                     SELECT COALESCE(SUM(total_quantity), 0) as total 
                     FROM base_data 
-                    WHERE strftime('%Y-%m', sales_date) = strftime('%Y-%m', 'now')
+                    WHERE TO_CHAR(sales_date, 'YYYY-MM') = TO_CHAR(CURRENT_DATE, 'YYYY-MM')
                 """
                 sales_this_month = pd.read_sql(sales_query, engine).iloc[0]['total']
                 
@@ -770,68 +771,102 @@ async def predict_sales(n_forecast: int = Query(default=3, ge=1, le=12)):
         raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
 
 # ============================================================================
+# ANALYSIS ENDPOINTS
+# ============================================================================
+
+# ============================================================================
 # HISTORICAL SALES ENDPOINT
 # ============================================================================
 
-@app.get("/historical")
-async def get_historical_sales(base_sku: str = Query(...)):
+@app.get("/analysis/historical")
+async def get_historical_sales(sku: str = Query(...)):
     """
-    Get historical sales data for a product from base_data
+    Get historical sales size mix data for a product using data_analyzer.size_mix_pivot
     """
     try:
-        print(f"[Backend] Fetching historical sales for {base_sku}")
+        print(f"[Backend] Fetching historical sales for SKU: {sku}")
         
-        if engine:
-            try:
-                query = """
-                    SELECT 
-                        strftime('%Y-%m', sales_date) as date,
-                        product_sku,
-                        product_name,
-                        total_quantity as quantity
-                    FROM base_data
-                    WHERE product_sku LIKE ?
-                    ORDER BY sales_date DESC
-                    LIMIT 12
-                """
-                
-                df = pd.read_sql(query, engine, params=[f"%{base_sku}%"])
-                
-                if df.empty:
-                    return {
-                        "chart": {
-                            "months": [],
-                            "series": []
-                        },
-                        "table": []
-                    }
-                
-                # Transform data for chart format
-                months = df['date'].unique().tolist()
-                
-                historical_data = {
-                    "chart": {
-                        "months": months,
-                        "series": [{"product": base_sku, "values": df['quantity'].tolist()}]
-                    },
-                    "table": df.to_dict('records')
-                }
-                
-                print(f"[Backend] Retrieved historical sales from database")
-                
-                return historical_data
-                
-            except SQLAlchemyError as e:
-                print(f"[Backend] Database error: {str(e)}")
+        if not engine:
+            return {
+                "success": False,
+                "message": "Database not configured",
+                "chart_data": [],
+                "table_data": []
+            }
+        
+        try:
+            # Query base_data table
+            query = """
+                SELECT 
+                    product_sku as Product_SKU,
+                    product_name as Product_name,
+                    sales_date as Date,
+                    sales_year as Year,
+                    sales_month as Month,
+                    total_quantity as Total_quantity
+                FROM base_data
+                ORDER BY sales_date ASC
+            """
+            
+            df = pd.read_sql(query, engine)
+            
+            if df.empty:
                 return {
-                    "chart": {"months": [], "series": []},
-                    "table": []
+                    "success": False,
+                    "message": "No data available. Please upload sales data first.",
+                    "chart_data": [],
+                    "table_data": []
                 }
-        
-        return {
-            "chart": {"months": [], "series": []},
-            "table": []
-        }
+            
+            # Use data_analyzer.size_mix_pivot to get size mix data
+            pivot_df = size_mix_pivot(df, sku)
+            
+            if pivot_df.empty:
+                return {
+                    "success": False,
+                    "message": f"No data found for SKU: {sku}",
+                    "chart_data": [],
+                    "table_data": []
+                }
+            
+            # Convert pivot to chart format
+            chart_data = []
+            for date_idx, row in pivot_df.iterrows():
+                month_data = {
+                    "month": date_idx.strftime("%Y-%m") if pd.notna(date_idx) else "Unknown"
+                }
+                for size in pivot_df.columns:
+                    month_data[size] = int(row[size]) if pd.notna(row[size]) else 0
+                chart_data.append(month_data)
+            
+            # Convert pivot to table format
+            table_data = []
+            for date_idx, row in pivot_df.iterrows():
+                row_data = {
+                    "date": date_idx.strftime("%Y-%m-%d") if pd.notna(date_idx) else "Unknown"
+                }
+                for size in pivot_df.columns:
+                    row_data[size] = int(row[size]) if pd.notna(row[size]) else 0
+                table_data.append(row_data)
+            
+            print(f"[Backend] ✅ Retrieved historical sales for {sku}: {len(chart_data)} months")
+            
+            return {
+                "success": True,
+                "message": "Historical sales data retrieved successfully",
+                "chart_data": chart_data,
+                "table_data": table_data,
+                "sizes": list(pivot_df.columns)
+            }
+            
+        except Exception as e:
+            print(f"[Backend] Error querying historical sales: {str(e)}")
+            return {
+                "success": False,
+                "message": f"Error: {str(e)}",
+                "chart_data": [],
+                "table_data": []
+            }
         
     except Exception as e:
         print(f"[Backend] Error in get_historical_sales: {str(e)}")
@@ -841,42 +876,88 @@ async def get_historical_sales(base_sku: str = Query(...)):
 # PERFORMANCE COMPARISON ENDPOINT
 # ============================================================================
 
-@app.get("/performance")
-async def get_performance_comparison(sku_list: List[str] = Query(...)):
+@app.post("/analysis/performance")
+async def get_performance_comparison(sku_list: List[str]):
     """
-    Compare performance of multiple products from base_data
+    Compare performance of up to 3 products using data_analyzer.performance_table
     """
     try:
         print(f"[Backend] Comparing performance for: {sku_list}")
         
-        if engine:
-            try:
-                # Create placeholders for SQL IN clause
-                placeholders = ','.join(['?' for _ in sku_list])
-                
-                query = f"""
-                    SELECT 
-                        product_sku as item,
-                        SUM(total_quantity) as quantity
-                    FROM base_data
-                    WHERE product_sku IN ({placeholders})
-                    GROUP BY product_sku
-                    ORDER BY quantity DESC
-                """
-                
-                df = pd.read_sql(query, engine, params=sku_list)
-                
-                performance_data = {
-                    "scatter": df.to_dict('records')
-                }
-                
-                return performance_data
-                
-            except SQLAlchemyError as e:
-                print(f"[Backend] Database error: {str(e)}")
-                return {"scatter": []}
+        if not engine:
+            return {
+                "success": False,
+                "message": "Database not configured",
+                "table_data": [],
+                "chart_data": {}
+            }
         
-        return {"scatter": []}
+        try:
+            # Query base_data table
+            query = """
+                SELECT 
+                    product_sku as Product_SKU,
+                    product_name as Product_name,
+                    sales_date as Date,
+                    sales_year as Year,
+                    sales_month as Month,
+                    total_quantity as Total_quantity
+                FROM base_data
+                ORDER BY sales_date ASC
+            """
+            
+            df = pd.read_sql(query, engine)
+            
+            if df.empty:
+                return {
+                    "success": False,
+                    "message": "No data available. Please upload sales data first.",
+                    "table_data": [],
+                    "chart_data": {}
+                }
+            
+            # Use data_analyzer.performance_table
+            perf_df = performance_table(df, sku_list[:3])  # Limit to 3 SKUs
+            
+            if perf_df.empty:
+                return {
+                    "success": False,
+                    "message": f"No data found for SKUs: {sku_list}",
+                    "table_data": [],
+                    "chart_data": {}
+                }
+            
+            # Convert to table format
+            table_data = perf_df.to_dict('records')
+            
+            # Generate chart data (monthly trends for each SKU)
+            chart_data = {}
+            for sku in sku_list[:3]:
+                sku_data = df[df['Product_SKU'].str.contains(sku, case=False, na=False)]
+                if not sku_data.empty:
+                    monthly = sku_data.groupby(['Year', 'Month'])['Total_quantity'].sum().reset_index()
+                    chart_data[sku] = [
+                        {"month": int(row['Month']), "value": int(row['Total_quantity'])}
+                        for _, row in monthly.iterrows()
+                    ]
+            
+            print(f"[Backend] ✅ Retrieved performance comparison for {len(table_data)} products")
+            
+            return {
+                "success": True,
+                "message": "Performance comparison data retrieved successfully",
+                "table_data": table_data,
+                "chart_data": chart_data
+            }
+            
+        except Exception as e:
+            print(f"[Backend] Error querying performance comparison: {str(e)}")
+            return {
+                "success": False,
+                "message": f"Error: {str(e)}",
+                "table_data": [],
+                "chart_data": {}
+            }
         
     except Exception as e:
         print(f"[Backend] Error in get_performance_comparison: {str(e)}")
@@ -886,51 +967,183 @@ async def get_performance_comparison(sku_list: List[str] = Query(...)):
 # BEST SELLERS ENDPOINT
 # ============================================================================
 
-@app.get("/best_sellers")
+@app.get("/analysis/best_sellers")
 async def get_best_sellers(
     year: int = Query(...),
     month: int = Query(...),
     top_n: int = Query(default=10, ge=1, le=50)
 ):
     """
-    Get best selling products for a specific month from base_data
+    Get best selling products for a specific month using data_analyzer.best_sellers_by_month
     """
     try:
         print(f"[Backend] Fetching best sellers for {year}-{month:02d}, top {top_n}")
         
-        if engine:
-            try:
-                query = """
-                    SELECT 
-                        product_sku as base_sku,
-                        product_name,
-                        SUM(total_quantity) as quantity
-                    FROM base_data
-                    WHERE sales_year = ? AND sales_month = ?
-                    GROUP BY product_sku, product_name
-                    ORDER BY quantity DESC
-                    LIMIT ?
-                """
-                
-                df = pd.read_sql(query, engine, params=[year, month, top_n])
-                
-                best_sellers_data = {
-                    "table": df.to_dict('records')
-                }
-                
-                print(f"[Backend] Retrieved {len(df)} best sellers from database")
-                
-                return best_sellers_data
-                
-            except SQLAlchemyError as e:
-                print(f"[Backend] Database error: {str(e)}")
-                return {"table": []}
+        if not engine:
+            return {
+                "success": False,
+                "message": "Database not configured",
+                "data": []
+            }
         
-        return {"table": []}
+        try:
+            # Query base_data table
+            query = """
+                SELECT 
+                    product_sku as Product_SKU,
+                    product_name as Product_name,
+                    sales_date as Date,
+                    sales_year as Year,
+                    sales_month as Month,
+                    total_quantity as Total_quantity
+                FROM base_data
+                ORDER BY sales_date ASC
+            """
+            
+            df = pd.read_sql(query, engine)
+            
+            if df.empty:
+                return {
+                    "success": False,
+                    "message": "No data available. Please upload sales data first.",
+                    "data": []
+                }
+            
+            # Use data_analyzer.best_sellers_by_month
+            best_df = best_sellers_by_month(df, year, month, top_n)
+            
+            if best_df.empty:
+                return {
+                    "success": False,
+                    "message": f"No data found for {year}-{month:02d}",
+                    "data": []
+                }
+            
+            # Convert to response format with rank
+            best_sellers_data = []
+            for idx, row in best_df.iterrows():
+                best_sellers_data.append({
+                    "rank": idx + 1,
+                    "base_sku": row['Base_SKU'],
+                    "name": row['Product_name'],
+                    "size": row['Best_Size'] if pd.notna(row['Best_Size']) else "N/A",
+                    "quantity": int(row['Quantity'])
+                })
+            
+            print(f"[Backend] ✅ Retrieved {len(best_sellers_data)} best sellers")
+            
+            return {
+                "success": True,
+                "message": "Best sellers data retrieved successfully",
+                "data": best_sellers_data
+            }
+            
+        except Exception as e:
+            print(f"[Backend] Error querying best sellers: {str(e)}")
+            return {
+                "success": False,
+                "message": f"Error: {str(e)}",
+                "data": []
+            }
         
     except Exception as e:
         print(f"[Backend] Error in get_best_sellers: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch best sellers: {str(e)}")
+
+# ============================================================================
+# TOTAL INCOME ENDPOINT
+# ============================================================================
+
+@app.get("/analysis/total_income")
+async def get_total_income():
+    """
+    Get total income analysis for all products using data_analyzer.total_income_table
+    """
+    try:
+        print(f"[Backend] Fetching total income analysis")
+        
+        if not engine:
+            return {
+                "success": False,
+                "message": "Database not configured",
+                "table_data": [],
+                "chart_data": [],
+                "grand_total": 0
+            }
+        
+        try:
+            # Query base_data table with revenue column
+            query = """
+                SELECT 
+                    product_sku as Product_SKU,
+                    product_name as Product_name,
+                    sales_date as Date,
+                    sales_year as Year,
+                    sales_month as Month,
+                    total_quantity as Total_quantity,
+                    CAST(total_quantity * 100 as FLOAT) as "Total_Amount(baht)"
+                FROM base_data
+                ORDER BY sales_date ASC
+            """
+            
+            df = pd.read_sql(query, engine)
+            
+            if df.empty:
+                return {
+                    "success": False,
+                    "message": "No data available. Please upload sales data first.",
+                    "table_data": [],
+                    "chart_data": [],
+                    "grand_total": 0
+                }
+            
+            # Add YearMonth column for grouping
+            df['YearMonth'] = pd.to_datetime(
+                df['Year'].astype(int).astype(str) + "-" + df['Month'].astype(int).astype(str) + "-01",
+                errors="coerce"
+            )
+            
+            # Use data_analyzer.total_income_table
+            income_df, grand_total = total_income_table(df)
+            
+            # Convert table to response format
+            table_data = income_df.to_dict('records')
+            
+            # Generate chart data (monthly income growth)
+            monthly_income = df.groupby('YearMonth')['Total_Amount(baht)'].sum().reset_index()
+            monthly_income = monthly_income.sort_values('YearMonth')
+            
+            chart_data = []
+            for idx, row in monthly_income.iterrows():
+                chart_data.append({
+                    "month": idx + 1,
+                    "income": float(row['Total_Amount(baht)'])
+                })
+            
+            print(f"[Backend] ✅ Retrieved total income: ฿{grand_total:,.2f}")
+            
+            return {
+                "success": True,
+                "message": "Total income data retrieved successfully",
+                "table_data": table_data,
+                "chart_data": chart_data,
+                "grand_total": float(grand_total)
+            }
+            
+        except Exception as e:
+            print(f"[Backend] Error querying total income: {str(e)}")
+            return {
+                "success": False,
+                "message": f"Error: {str(e)}",
+                "table_data": [],
+                "chart_data": [],
+                "grand_total": 0
+            }
+        
+    except Exception as e:
+        print(f"[Backend] Error in get_total_income: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch total income: {str(e)}")
+
 
 # ============================================================================
 # RUN SERVER
