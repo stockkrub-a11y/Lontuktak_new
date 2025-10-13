@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { Search, Home, Package, TrendingUp, BookOpen, Bell, Filter, X, Clock } from "lucide-react"
 import { predictSales } from "@/lib/api"
@@ -23,6 +23,41 @@ export default function PredictPage() {
 
   const timeRangeOptions = ["1 Month", "2 Month", "3 Month", "4 Month", "5 Month", "6 Month", "1 Year", "Option"]
 
+  useEffect(() => {
+    async function loadExistingForecasts() {
+      try {
+        setIsLoading(true)
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/predict/existing`)
+        if (response.ok) {
+          const data = await response.json()
+          if (data.forecast && data.forecast.length > 0) {
+            const mapped: ForecastData[] = data.forecast.map((item) => ({
+              sku: item.product_sku,
+              forecastDate: new Date(item.forecast_date).toLocaleDateString("en-US", {
+                month: "short",
+                year: "2-digit",
+              }),
+              predictedSales: Math.round(item.predicted_sales).toString(),
+              currentSale: Math.round(item.current_sales).toString(),
+              currentDate: new Date(item.current_date_col).toLocaleDateString("en-US", {
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+              }),
+            }))
+            setForecastData(mapped)
+          }
+        }
+      } catch (error) {
+        console.log("[v0] No existing forecasts found")
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadExistingForecasts()
+  }, [])
+
   const handlePredict = async () => {
     const months =
       selectedTimeRange === "Option"
@@ -31,28 +66,32 @@ export default function PredictPage() {
           ? 12
           : Number.parseInt(selectedTimeRange.split(" ")[0])
 
+    setIsPredictModalOpen(false)
     setIsLoading(true)
-    try {
-      const response = await predictSales(months)
-      const mapped: ForecastData[] = response.forecast.map((item) => ({
-        sku: item.product_sku,
-        forecastDate: new Date(item.forecast_date).toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
-        predictedSales: `฿${(item.predicted_sales / 1000).toFixed(1)}k`,
-        currentSale: `฿${(item.current_sales / 1000).toFixed(1)}k`,
-        currentDate: new Date(item.current_date_col).toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-          year: "numeric",
-        }),
-      }))
-      setForecastData(mapped)
-      setIsPredictModalOpen(false)
-    } catch (error) {
-      console.error("[v0] Prediction failed:", error)
-      alert(`Prediction failed: ${error instanceof Error ? error.message : "Unknown error"}`)
-    } finally {
-      setIsLoading(false)
-    }
+    setForecastData([])
+
+    predictSales(months)
+      .then((response) => {
+        const mapped: ForecastData[] = response.forecast.map((item) => ({
+          sku: item.product_sku,
+          forecastDate: new Date(item.forecast_date).toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
+          predictedSales: Math.round(item.predicted_sales).toString(),
+          currentSale: Math.round(item.current_sales).toString(),
+          currentDate: new Date(item.current_date_col).toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          }),
+        }))
+        setForecastData(mapped)
+      })
+      .catch((error) => {
+        console.error("[v0] Prediction failed:", error)
+        alert(`Prediction failed: ${error instanceof Error ? error.message : "Unknown error"}`)
+      })
+      .finally(() => {
+        setIsLoading(false)
+      })
   }
 
   const handleReset = () => {
@@ -196,7 +235,10 @@ export default function PredictPage() {
             {/* Forecast Table */}
             <div className="overflow-x-auto">
               {isLoading ? (
-                <div className="text-center py-8 text-[#938d7a]">Generating predictions...</div>
+                <div className="text-center py-8 text-[#938d7a]">
+                  Generating predictions... This may take up to 2 minutes. You can navigate to other pages while
+                  waiting.
+                </div>
               ) : forecastData.length === 0 ? (
                 <div className="text-center py-8 text-[#938d7a]">
                   No forecast data. Click "Predict System" to generate predictions.
@@ -306,10 +348,9 @@ export default function PredictPage() {
               </button>
               <button
                 onClick={handlePredict}
-                disabled={isLoading}
-                className="flex-1 px-6 py-2 bg-[#cecabf] hover:bg-[#b4bbcb] text-black font-medium rounded-lg transition-colors disabled:opacity-50"
+                className="flex-1 px-6 py-2 bg-[#cecabf] hover:bg-[#b4bbcb] text-black font-medium rounded-lg transition-colors"
               >
-                {isLoading ? "Predicting..." : "Predict"}
+                Predict
               </button>
             </div>
           </div>

@@ -587,6 +587,84 @@ async def get_dashboard_analytics():
 # PREDICTION ENDPOINT
 # ============================================================================
 
+@app.get("/predict/existing")
+async def get_existing_forecasts():
+    """
+    Get existing forecast data from forecast_output table without retraining
+    """
+    try:
+        print("[Backend] Fetching existing forecasts from database")
+        
+        if not engine:
+            return {
+                "status": "error",
+                "forecast_rows": 0,
+                "forecast": [],
+                "message": "Database not configured"
+            }
+        
+        try:
+            # Query existing forecasts from forecast_output table
+            query = """
+                SELECT 
+                    product_sku,
+                    forecast_date,
+                    predicted_sales,
+                    current_sale,
+                    current_date_col
+                FROM forecast_output
+                ORDER BY forecast_date ASC, product_sku ASC
+            """
+            
+            df = pd.read_sql(query, engine)
+            
+            if df.empty:
+                print("[Backend] No existing forecasts found")
+                return {
+                    "status": "success",
+                    "forecast_rows": 0,
+                    "forecast": [],
+                    "message": "No forecasts available. Click 'Predict System' to generate."
+                }
+            
+            # Convert to response format
+            forecast_data = []
+            for _, row in df.iterrows():
+                forecast_data.append({
+                    "product_sku": row['product_sku'],
+                    "forecast_date": row['forecast_date'].strftime("%Y-%m-%d") if pd.notna(row['forecast_date']) else None,
+                    "predicted_sales": float(row['predicted_sales']) if pd.notna(row['predicted_sales']) else 0,
+                    "current_sales": float(row['current_sale']) if pd.notna(row['current_sale']) else 0,
+                    "current_date_col": row['current_date_col'].strftime("%Y-%m-%d") if pd.notna(row['current_date_col']) else None
+                })
+            
+            print(f"[Backend] Retrieved {len(forecast_data)} existing forecast records")
+            
+            return {
+                "status": "success",
+                "forecast_rows": len(forecast_data),
+                "forecast": forecast_data,
+                "message": "Existing forecasts loaded successfully"
+            }
+            
+        except SQLAlchemyError as e:
+            print(f"[Backend] Database error: {str(e)}")
+            return {
+                "status": "error",
+                "forecast_rows": 0,
+                "forecast": [],
+                "message": "No forecasts available yet"
+            }
+        
+    except Exception as e:
+        print(f"[Backend] Error in get_existing_forecasts: {str(e)}")
+        return {
+            "status": "error",
+            "forecast_rows": 0,
+            "forecast": [],
+            "message": f"Failed to load forecasts: {str(e)}"
+        }
+
 @app.post("/predict")
 async def predict_sales(n_forecast: int = Query(default=3, ge=1, le=12)):
     """
