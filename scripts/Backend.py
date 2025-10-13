@@ -19,6 +19,7 @@ import shutil
 
 from Auto_cleaning import auto_cleaning, check_db_status
 from DB_server import engine
+from Predict import update_model_and_train, forcast_loop
 
 # ============================================================================
 # DATABASE CONFIGURATION
@@ -55,6 +56,82 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Function to ensure tables exist
+def ensure_tables_exist():
+    """
+    Ensure required database tables exist, create them if they don't
+    """
+    if not engine:
+        print("[Backend] No database engine available")
+        return False
+    
+    try:
+        with engine.connect() as conn:
+            # Check if base_data table exists
+            check_query = text("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = 'public' 
+                    AND table_name = 'base_data'
+                );
+            """)
+            
+            result = conn.execute(check_query).fetchone()
+            table_exists = result[0] if result else False
+            
+            if not table_exists:
+                print("[Backend] Tables don't exist, creating them now...")
+                
+                # Create base_data table
+                conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS base_data (
+                        product_sku      VARCHAR(50) NOT NULL,
+                        product_name     VARCHAR(200),
+                        sales_date       DATE NOT NULL,
+                        sales_year       INTEGER,
+                        sales_month      INTEGER,
+                        total_quantity   NUMERIC(12),
+                        CONSTRAINT pk_base_data PRIMARY KEY (product_sku, sales_date)
+                    );
+                """))
+                
+                # Create all_products table
+                conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS all_products (
+                        product_sku     VARCHAR(50) NOT NULL,
+                        product_name    VARCHAR(200),
+                        category        VARCHAR(100),
+                        quantity        NUMERIC(12),
+                        CONSTRAINT pk_products PRIMARY KEY (product_sku)
+                    );
+                """))
+                
+                # Create forecast_output table
+                conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS forecast_output (
+                        product_sku      VARCHAR(50) NOT NULL,
+                        forecast_date    DATE NOT NULL,
+                        predicted_sales  NUMERIC(12,2),
+                        current_sale     NUMERIC(12,2),
+                        current_date_col DATE,
+                        CONSTRAINT pk_forecast_output PRIMARY KEY (product_sku, forecast_date)
+                    );
+                """))
+                
+                conn.commit()
+                print("[Backend] ✅ Tables created successfully")
+                return True
+            else:
+                print("[Backend] ✅ Tables already exist")
+                return True
+                
+    except Exception as e:
+        print(f"[Backend] ❌ Error ensuring tables exist: {str(e)}")
+        return False
+
+print("[Backend] Checking database tables...")
+ensure_tables_exist()
+
 # ============================================================================
 # HEALTH CHECK
 # ============================================================================
@@ -63,7 +140,7 @@ app.add_middleware(
 async def root():
     """Root endpoint"""
     return {
-        "message": "Welcome to Lon Tuk Tak API",
+        "message": "Welcome to Lon TukTak API",
         "status": "running",
         "version": "1.0.0",
         "docs": "/docs",
@@ -100,6 +177,7 @@ async def train_model(
 ):
     """
     Upload and train model with sales and product data using Auto_cleaning.py
+    Then train ML model using Predict.py
     """
     sales_temp_path = None
     product_temp_path = None
@@ -111,6 +189,10 @@ async def train_model(
         
         if not engine:
             raise HTTPException(status_code=500, detail="Database not configured")
+        
+        print("[Backend] Ensuring database tables exist...")
+        if not ensure_tables_exist():
+            raise HTTPException(status_code=500, detail="Failed to create database tables")
         
         # Create temporary directory for uploaded files
         temp_dir = tempfile.mkdtemp()
@@ -129,12 +211,79 @@ async def train_model(
             f.write(product_content)
         print(f"[Backend] Saved product file to: {product_temp_path}")
         
-        # Call auto_cleaning function
-        print("[Backend] Starting auto_cleaning process...")
+        # Step 1: Call auto_cleaning function
+        print("[Backend] Step 1: Starting auto_cleaning process...")
         df_cleaned = auto_cleaning(sales_temp_path, product_temp_path, engine)
         
-        print(f"[Backend] Auto cleaning completed successfully")
+        print(f"[Backend] ✅ Auto cleaning completed successfully")
         print(f"[Backend] Cleaned data shape: {df_cleaned.shape}")
+        
+        print("[Backend] Step 2: Pulling data from base_data for ML training...")
+        
+        try:
+            # Query base_data table to get the cleaned data
+            query = """
+                SELECT 
+                    product_sku,
+                    product_name,
+                    sales_date,
+                    sales_year,
+                    sales_month,
+                    total_quantity
+                FROM base_data
+                ORDER BY sales_date ASC
+            """
+            
+            df_for_training = pd.read_sql(query, engine)
+            print(f"[Backend] Retrieved {len(df_for_training)} rows from base_data for training")
+            
+            if len(df_for_training) < 12:
+                print("[Backend] ⚠️ Warning: Not enough data for ML training (need at least 12 months)")
+                training_status = "skipped"
+                training_message = "Not enough historical data for ML training (need at least 12 months)"
+                forecast_rows = 0
+            else:
+                # Call update_model_and_train from Predict.py
+                print("[Backend] Starting ML model training...")
+                df_window_raw, df_window, base_model, X_train, y_train, X_test, y_test, product_sku_last = update_model_and_train(df_for_training)
+                
+                print(f"[Backend] ✅ ML model training completed successfully")
+                
+                print("[Backend] Step 3: Generating forecasts...")
+                long_forecast, long_forecast_rows = forcast_loop(
+                    X_train, 
+                    y_train, 
+                    df_window_raw, 
+                    product_sku_last, 
+                    base_model, 
+                    n_forecast=2,  # Forecast next 2 months
+                    retrain_each_step=True
+                )
+                
+                print(f"[Backend] ✅ Forecast generation completed")
+                print(f"[Backend] Generated {len(long_forecast)} forecast records")
+                
+                # Save forecast to database
+                print("[Backend] Saving forecast to database...")
+                long_forecast.to_sql(
+                    'forecast_output',
+                    engine,
+                    if_exists='replace',
+                    index=False,
+                    method='multi'
+                )
+                
+                print(f"[Backend] ✅ Forecast saved to forecast_output table")
+                
+                training_status = "completed"
+                training_message = "ML model trained and forecasts generated successfully"
+                forecast_rows = len(long_forecast)
+                
+        except Exception as ml_error:
+            print(f"[Backend] ⚠️ ML training error: {str(ml_error)}")
+            training_status = "failed"
+            training_message = f"ML training failed: {str(ml_error)}"
+            forecast_rows = 0
         
         # Clean up temporary files
         try:
@@ -145,9 +294,16 @@ async def train_model(
         
         return {
             "success": True,
-            "message": "Data cleaned and stored successfully using Auto_cleaning",
-            "rows_uploaded": len(df_cleaned),
-            "cleaning_applied": True,
+            "message": "Data processing completed",
+            "data_cleaning": {
+                "status": "completed",
+                "rows_uploaded": len(df_cleaned)
+            },
+            "ml_training": {
+                "status": training_status,
+                "message": training_message,
+                "forecast_rows": forecast_rows
+            },
             "timestamp": datetime.now().isoformat()
         }
         
