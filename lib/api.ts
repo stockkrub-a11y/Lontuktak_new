@@ -284,3 +284,48 @@ export async function getAnalysisTotalIncome() {
     return { success: false, message: "Failed to fetch data", table_data: [], chart_data: [], grand_total: 0 }
   }
 }
+
+export async function checkBackendHealth() {
+  try {
+    const response = await fetch(`${API_BASE_URL}/health`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    })
+
+    if (!response.ok) {
+      return {
+        connected: false,
+        error: `Backend returned status ${response.status}`,
+        url: API_BASE_URL,
+      }
+    }
+
+    const data = await response.json()
+    return {
+      connected: true,
+      data,
+      url: API_BASE_URL,
+    }
+  } catch (error) {
+    console.error("[v0] Backend health check failed:", error)
+    return {
+      connected: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+      url: API_BASE_URL,
+    }
+  }
+}
+
+export async function clearForecasts() {
+  try {
+    return await apiFetch<{
+      success: boolean
+      message: string
+    }>("/predict/clear", { method: "DELETE" })
+  } catch (error) {
+    console.error("[v0] Failed to clear forecasts:", error)
+    throw error
+  }
+}
