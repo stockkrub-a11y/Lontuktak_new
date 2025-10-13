@@ -57,6 +57,7 @@ export async function trainModel(salesFile: File, productFile?: File) {
 }
 
 export async function predictSales(nForecast = 3) {
+  console.log("[v0] Calling predict API with n_forecast:", nForecast)
   return apiFetch<{
     status: string
     forecast_rows: number
@@ -69,6 +70,22 @@ export async function predictSales(nForecast = 3) {
       current_date_col: string
     }>
   }>(`/predict?n_forecast=${nForecast}`, { method: "POST" })
+}
+
+export async function getExistingForecasts() {
+  console.log("[v0] Fetching existing forecasts")
+  return apiFetch<{
+    status: string
+    forecast_rows: number
+    forecast: Array<{
+      product_sku: string
+      forecast_date: string
+      predicted_sales: number
+      current_sales: number
+      current_date_col: string
+    }>
+    message: string
+  }>("/predict/existing")
 }
 
 export async function getHistoricalSales(baseSku: string) {

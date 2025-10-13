@@ -610,7 +610,7 @@ async def get_existing_forecasts():
                     product_sku,
                     forecast_date,
                     predicted_sales,
-                    current_sale,
+                    current_sale as current_sales,
                     current_date_col
                 FROM forecast_output
                 ORDER BY forecast_date ASC, product_sku ASC
@@ -624,7 +624,7 @@ async def get_existing_forecasts():
                     "status": "success",
                     "forecast_rows": 0,
                     "forecast": [],
-                    "message": "No forecasts available. Click 'Predict System' to generate."
+                    "message": "No forecasts available. Upload data first or click 'Predict System'."
                 }
             
             # Convert to response format
@@ -634,11 +634,11 @@ async def get_existing_forecasts():
                     "product_sku": row['product_sku'],
                     "forecast_date": row['forecast_date'].strftime("%Y-%m-%d") if pd.notna(row['forecast_date']) else None,
                     "predicted_sales": float(row['predicted_sales']) if pd.notna(row['predicted_sales']) else 0,
-                    "current_sales": float(row['current_sale']) if pd.notna(row['current_sale']) else 0,
+                    "current_sales": float(row['current_sales']) if pd.notna(row['current_sales']) else 0,
                     "current_date_col": row['current_date_col'].strftime("%Y-%m-%d") if pd.notna(row['current_date_col']) else None
                 })
             
-            print(f"[Backend] Retrieved {len(forecast_data)} existing forecast records")
+            print(f"[Backend] ✅ Retrieved {len(forecast_data)} existing forecast records")
             
             return {
                 "status": "success",
@@ -653,7 +653,7 @@ async def get_existing_forecasts():
                 "status": "error",
                 "forecast_rows": 0,
                 "forecast": [],
-                "message": "No forecasts available yet"
+                "message": "No forecasts available yet. Upload data first."
             }
         
     except Exception as e:

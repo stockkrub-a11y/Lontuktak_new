@@ -20,43 +20,66 @@ export default function PredictPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [forecastData, setForecastData] = useState<ForecastData[]>([])
   const [isLoading, setIsLoading] = useState(false)
+  const [isGenerating, setIsGenerating] = useState(false)
 
   const timeRangeOptions = ["1 Month", "2 Month", "3 Month", "4 Month", "5 Month", "6 Month", "1 Year", "Option"]
 
-  useEffect(() => {
-    async function loadExistingForecasts() {
-      try {
-        setIsLoading(true)
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/predict/existing`)
-        if (response.ok) {
-          const data = await response.json()
-          if (data.forecast && data.forecast.length > 0) {
-            const mapped: ForecastData[] = data.forecast.map((item) => ({
-              sku: item.product_sku,
-              forecastDate: new Date(item.forecast_date).toLocaleDateString("en-US", {
-                month: "short",
-                year: "2-digit",
-              }),
-              predictedSales: Math.round(item.predicted_sales).toString(),
-              currentSale: Math.round(item.current_sales).toString(),
-              currentDate: new Date(item.current_date_col).toLocaleDateString("en-US", {
-                month: "short",
-                day: "numeric",
-                year: "numeric",
-              }),
-            }))
-            setForecastData(mapped)
-          }
+  const loadExistingForecasts = async () => {
+    try {
+      console.log("[v0] Loading existing forecasts...")
+      setIsLoading(true)
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/predict/existing`)
+
+      if (response.ok) {
+        const data = await response.json()
+        console.log("[v0] Forecast data received:", data)
+
+        if (data.forecast && data.forecast.length > 0) {
+          const mapped: ForecastData[] = data.forecast.map((item) => ({
+            sku: item.product_sku,
+            forecastDate: new Date(item.forecast_date).toLocaleDateString("en-US", {
+              month: "short",
+              year: "2-digit",
+            }),
+            predictedSales: Math.round(item.predicted_sales).toString(),
+            currentSale: Math.round(item.current_sales).toString(),
+            currentDate: new Date(item.current_date_col).toLocaleDateString("en-US", {
+              month: "short",
+              day: "numeric",
+              year: "numeric",
+            }),
+          }))
+          setForecastData(mapped)
+          console.log("[v0] Loaded", mapped.length, "forecast records")
+        } else {
+          console.log("[v0] No forecast data available")
+          setForecastData([])
         }
-      } catch (error) {
-        console.log("[v0] No existing forecasts found")
-      } finally {
-        setIsLoading(false)
+      } else {
+        console.error("[v0] Failed to load forecasts:", response.status)
+      }
+    } catch (error) {
+      console.error("[v0] Error loading forecasts:", error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadExistingForecasts()
+  }, [])
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible" && !isGenerating) {
+        console.log("[v0] Page became visible, reloading forecasts...")
+        loadExistingForecasts()
       }
     }
 
-    loadExistingForecasts()
-  }, [])
+    document.addEventListener("visibilitychange", handleVisibilityChange)
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange)
+  }, [isGenerating])
 
   const handlePredict = async () => {
     const months =
@@ -67,11 +90,15 @@ export default function PredictPage() {
           : Number.parseInt(selectedTimeRange.split(" ")[0])
 
     setIsPredictModalOpen(false)
+    setIsGenerating(true)
     setIsLoading(true)
     setForecastData([])
 
+    console.log("[v0] Starting prediction for", months, "months")
+
     predictSales(months)
       .then((response) => {
+        console.log("[v0] Prediction completed:", response)
         const mapped: ForecastData[] = response.forecast.map((item) => ({
           sku: item.product_sku,
           forecastDate: new Date(item.forecast_date).toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
@@ -91,6 +118,7 @@ export default function PredictPage() {
       })
       .finally(() => {
         setIsLoading(false)
+        setIsGenerating(false)
       })
   }
 
@@ -235,19 +263,40 @@ export default function PredictPage() {
             {/* Forecast Table */}
             <div className="overflow-x-auto">
               {isLoading ? (
-                <div className="text-center py-8 text-[#938d7a]">
-                  Generating predictions... This may take up to 2 minutes. You can navigate to other pages while
-                  waiting.
+                <div className="text-center py-8">
+                  <div className="text-[#938d7a] mb-2">
+                    {isGenerating ? "Generating predictions... This may take up to 2 minutes." : "Loading forecasts..."}
+                  </div>
+                  <div className="text-sm text-[#938d7a]">You can navigate to other pages while waiting.</div>
                 </div>
               ) : forecastData.length === 0 ? (
-                <div className="text-center py-8 text-[#938d7a]">
-                  No forecast data. Click "Predict System" to generate predictions.
+                <div className="text-center py-8">
+                  <div className="text-[#938d7a] mb-2">No forecast data available.</div>
+                  <div className="text-sm text-[#938d7a] mb-4">
+                    Upload sales data first, then click "Predict System" to generate predictions.
+                  </div>
+                  <button
+                    onClick={loadExistingForecasts}
+                    className="px-4 py-2 bg-[#efece3] hover:bg-[#cecabf] rounded-lg transition-colors text-sm font-medium text-black"
+                  >
+                    Refresh
+                  </button>
                 </div>
               ) : (
                 <>
-                  <div className="flex items-center gap-3 mb-6">
-                    <Clock className="w-5 h-5 text-black" />
-                    <h4 className="text-lg font-semibold text-black">{selectedTimeRange} Forecast</h4>
+                  <div className="flex items-center justify-between mb-6">
+                    <div className="flex items-center gap-3">
+                      <Clock className="w-5 h-5 text-black" />
+                      <h4 className="text-lg font-semibold text-black">
+                        Forecast Results ({forecastData.length} records)
+                      </h4>
+                    </div>
+                    <button
+                      onClick={loadExistingForecasts}
+                      className="px-3 py-1.5 bg-[#efece3] hover:bg-[#cecabf] rounded-lg transition-colors text-sm font-medium text-black"
+                    >
+                      Refresh
+                    </button>
                   </div>
                   <table className="w-full">
                     <thead>
