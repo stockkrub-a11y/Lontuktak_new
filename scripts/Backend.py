@@ -824,42 +824,49 @@ async def get_historical_sales(sku: str = Query(...)):
                 "success": False,
                 "message": "Database not configured",
                 "chart_data": [],
-                "table_data": []
+                "table_data": [],
+                "sizes": []
             }
         
         try:
             # Query base_data table
             query = """
                 SELECT 
-                    product_sku as Product_SKU,
-                    product_name as Product_name,
-                    sales_date as Date,
-                    sales_year as Year,
-                    sales_month as Month,
-                    total_quantity as Total_quantity
+                    product_sku as "Product_SKU",
+                    product_name as "Product_name",
+                    sales_date as "Date",
+                    sales_year as "Year",
+                    sales_month as "Month",
+                    total_quantity as "Total_quantity"
                 FROM base_data
                 ORDER BY sales_date ASC
             """
             
             df = pd.read_sql(query, engine)
+            print(f"[Backend] Retrieved {len(df)} rows from base_data")
+            print(f"[Backend] DataFrame columns: {df.columns.tolist()}")
             
             if df.empty:
                 return {
                     "success": False,
                     "message": "No data available. Please upload sales data first.",
                     "chart_data": [],
-                    "table_data": []
+                    "table_data": [],
+                    "sizes": []
                 }
             
             # Use data_analyzer.size_mix_pivot to get size mix data
+            print(f"[Backend] Calling size_mix_pivot for SKU: {sku}")
             pivot_df = size_mix_pivot(df, sku)
+            print(f"[Backend] Pivot result shape: {pivot_df.shape}")
             
             if pivot_df.empty:
                 return {
                     "success": False,
                     "message": f"No data found for SKU: {sku}",
                     "chart_data": [],
-                    "table_data": []
+                    "table_data": [],
+                    "sizes": []
                 }
             
             # Convert pivot to chart format
@@ -898,7 +905,8 @@ async def get_historical_sales(sku: str = Query(...)):
                 "success": False,
                 "message": f"Error: {str(e)}",
                 "chart_data": [],
-                "table_data": []
+                "table_data": [],
+                "sizes": []
             }
         
     except Exception as e:
