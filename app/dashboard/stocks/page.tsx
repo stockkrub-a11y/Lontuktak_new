@@ -16,6 +16,9 @@ import {
   X,
   CloudUpload,
   CheckCircle2,
+  Wifi,
+  WifiOff,
+  AlertCircle,
 } from "lucide-react"
 import { getStockLevels, trainModel } from "@/lib/api"
 
@@ -37,10 +40,13 @@ export default function StocksPage() {
   const [salesFile, setSalesFile] = useState<File | null>(null)
   const [productFile, setProductFile] = useState<File | null>(null)
   const [isUploading, setIsUploading] = useState(false)
+  const [backendConnected, setBackendConnected] = useState(true)
+  const [showOfflineBanner, setShowOfflineBanner] = useState(false)
 
   useEffect(() => {
     async function fetchStocks() {
       try {
+        console.log("[v0] Fetching stock levels...")
         const response = await getStockLevels()
         if (response.success) {
           const mapped = response.data.map((item, index) => ({
@@ -48,14 +54,18 @@ export default function StocksPage() {
             name: item.product_name,
             quantity: item.stock,
             category: item.category || "Uncategorized",
-            status: item.status,
-            statusColor: item.status === "In Stock" ? "green" : item.status === "Low Stock" ? "orange" : "red",
-            dotColor: item.status === "In Stock" ? "#00a63e" : item.status === "Low Stock" ? "#eaac54" : "#ea5457",
+            status: item.status || (item.stock === 0 ? "Out of Stock" : item.stock < 50 ? "Low Stock" : "In Stock"),
+            statusColor: item.stock === 0 ? "red" : item.stock < 50 ? "orange" : "green",
+            dotColor: item.stock === 0 ? "#ea5457" : item.stock < 50 ? "#eaac54" : "#00a63e",
           }))
           setStockItems(mapped)
+          setBackendConnected(true)
+          setShowOfflineBanner(false)
         }
       } catch (error) {
         console.error("[v0] Failed to fetch stock levels:", error)
+        setBackendConnected(false)
+        setShowOfflineBanner(true)
       } finally {
         setIsLoading(false)
       }
@@ -138,6 +148,19 @@ export default function StocksPage() {
           </div>
 
           <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-[#f8f5ee] rounded-lg">
+              {backendConnected ? (
+                <>
+                  <Wifi className="w-4 h-4 text-[#00a63e]" />
+                  <span className="text-xs text-[#00a63e] font-medium">Backend Online</span>
+                </>
+              ) : (
+                <>
+                  <WifiOff className="w-4 h-4 text-[#ea5457]" />
+                  <span className="text-xs text-[#ea5457] font-medium">Backend Offline</span>
+                </>
+              )}
+            </div>
             <div className="w-10 h-10 bg-[#ffd700] rounded flex items-center justify-center font-bold text-black text-sm">
               TG
             </div>
@@ -194,6 +217,30 @@ export default function StocksPage() {
 
         {/* Main Content */}
         <main className="flex-1 p-8">
+          {showOfflineBanner && (
+            <div className="mb-6 bg-[#fff4e6] border border-[#eaac54] rounded-lg p-4">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-[#eaac54] flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <h4 className="font-medium text-black mb-1">Backend Server Offline</h4>
+                  <p className="text-sm text-[#938d7a] mb-2">
+                    The backend server is not running. Stock data cannot be loaded from the database.
+                  </p>
+                  <p className="text-sm text-black font-medium">
+                    To start the backend server, run:{" "}
+                    <code className="bg-white px-2 py-1 rounded">python scripts/Backend.py</code>
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowOfflineBanner(false)}
+                  className="text-[#938d7a] hover:text-black transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Page Header */}
           <div className="flex items-start justify-between mb-8">
             <div>
@@ -245,7 +292,15 @@ export default function StocksPage() {
             {isLoading ? (
               <div className="text-center py-8 text-[#938d7a]">Loading stock data...</div>
             ) : stockItems.length === 0 ? (
-              <div className="text-center py-8 text-[#938d7a]">No stock data available. Please upload files.</div>
+              <div className="text-center py-8">
+                <Package className="w-12 h-12 text-[#cecabf] mx-auto mb-3" />
+                <p className="text-[#938d7a] mb-2">No stock data available</p>
+                <p className="text-sm text-[#938d7a]">
+                  {backendConnected
+                    ? "Please upload your product list and sales stock files to get started."
+                    : "Start the backend server and upload files to see stock data."}
+                </p>
+              </div>
             ) : (
               <div className="space-y-3">
                 {stockItems.map((item) => (
