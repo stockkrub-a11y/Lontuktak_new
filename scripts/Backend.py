@@ -770,6 +770,39 @@ async def predict_sales(n_forecast: int = Query(default=3, ge=1, le=12)):
         print(f"[Backend] Error in predict_sales: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
 
+@app.delete("/predict/clear")
+async def clear_forecasts():
+    """
+    Clear all forecast data from forecast_output table
+    """
+    try:
+        print("[Backend] Clearing all forecasts from database")
+        
+        if not engine:
+            raise HTTPException(status_code=500, detail="Database not configured")
+        
+        try:
+            with engine.connect() as conn:
+                # Delete all records from forecast_output table
+                conn.execute(text("DELETE FROM forecast_output"))
+                conn.commit()
+                
+            print("[Backend] ✅ All forecasts cleared successfully")
+            
+            return {
+                "success": True,
+                "message": "All forecast data cleared successfully",
+                "timestamp": datetime.now().isoformat()
+            }
+            
+        except SQLAlchemyError as e:
+            print(f"[Backend] Database error: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Failed to clear forecasts: {str(e)}")
+        
+    except Exception as e:
+        print(f"[Backend] Error in clear_forecasts: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to clear forecasts: {str(e)}")
+
 # ============================================================================
 # ANALYSIS ENDPOINTS
 # ============================================================================

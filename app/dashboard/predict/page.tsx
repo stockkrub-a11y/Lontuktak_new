@@ -127,6 +127,26 @@ export default function PredictPage() {
     setCustomMonths("")
   }
 
+  const handleClearForecasts = async () => {
+    if (confirm("Are you sure you want to clear all forecast data? This will delete forecasts from the database.")) {
+      try {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/predict/clear`, {
+          method: "DELETE",
+        })
+
+        if (response.ok) {
+          setForecastData([])
+          alert("Forecast data cleared successfully")
+        } else {
+          alert("Failed to clear forecast data")
+        }
+      } catch (error) {
+        console.error("[v0] Error clearing forecasts:", error)
+        alert("Failed to clear forecast data. Backend may be offline.")
+      }
+    }
+  }
+
   const handleExportExcel = () => {
     const headers = ["Product SKU", "Forecast Date", "Predicted Sales", "Current Sale", "Current Date"]
     const csvData = forecastData.map((row) => [
@@ -291,12 +311,26 @@ export default function PredictPage() {
                         Forecast Results ({forecastData.length} records)
                       </h4>
                     </div>
-                    <button
-                      onClick={loadExistingForecasts}
-                      className="px-3 py-1.5 bg-[#efece3] hover:bg-[#cecabf] rounded-lg transition-colors text-sm font-medium text-black"
-                    >
-                      Refresh
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handleExportExcel}
+                        className="px-4 py-2 bg-[#4ade80] hover:bg-[#22c55e] rounded-lg transition-colors text-sm font-medium text-white"
+                      >
+                        Export to Excel
+                      </button>
+                      <button
+                        onClick={handleClearForecasts}
+                        className="px-4 py-2 bg-[#ef4444] hover:bg-[#dc2626] rounded-lg transition-colors text-sm font-medium text-white"
+                      >
+                        Clear Forecasts
+                      </button>
+                      <button
+                        onClick={loadExistingForecasts}
+                        className="px-3 py-1.5 bg-[#efece3] hover:bg-[#cecabf] rounded-lg transition-colors text-sm font-medium text-black"
+                      >
+                        Refresh
+                      </button>
+                    </div>
                   </div>
                   <table className="w-full">
                     <thead>
