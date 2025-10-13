@@ -17,6 +17,7 @@ import {
   Wifi,
   WifiOff,
   X,
+  AlertCircle,
 } from "lucide-react"
 import {
   Line,
@@ -62,6 +63,8 @@ export default function AnalysisPage() {
   useEffect(() => {
     if (activeTab === "income") {
       loadTotalIncome()
+    } else if (activeTab === "bestsellers") {
+      loadBestSellers()
     }
   }, [activeTab])
 
@@ -72,12 +75,17 @@ export default function AnalysisPage() {
 
     setIsLoading(true)
     try {
+      console.log("[v0] Loading historical sales for SKU:", historicalSku)
       const data = await getAnalysisHistoricalSales(historicalSku)
+      console.log("[v0] Historical sales response:", data)
+
       if (data.success) {
         setHistoricalData(data)
         setBackendConnected(true)
+        setShowOfflineBanner(false)
       } else {
         setHistoricalData({ chart_data: [], table_data: [], sizes: [], message: data.message })
+        setBackendConnected(true)
       }
     } catch (error) {
       console.error("[v0] Error loading historical sales:", error)
@@ -92,12 +100,17 @@ export default function AnalysisPage() {
   const loadPerformanceComparison = async () => {
     setIsLoading(true)
     try {
+      console.log("[v0] Loading performance comparison for:", selectedProducts)
       const data = await getAnalysisPerformance(selectedProducts)
+      console.log("[v0] Performance comparison response:", data)
+
       if (data.success) {
         setPerformanceData(data)
         setBackendConnected(true)
+        setShowOfflineBanner(false)
       } else {
         setPerformanceData({ chart_data: {}, table_data: [], message: data.message })
+        setBackendConnected(true)
       }
     } catch (error) {
       console.error("[v0] Error loading performance comparison:", error)
@@ -112,12 +125,17 @@ export default function AnalysisPage() {
   const loadBestSellers = async () => {
     setIsLoading(true)
     try {
+      console.log("[v0] Loading best sellers for:", bestSellersYear, bestSellersMonth)
       const data = await getAnalysisBestSellers(bestSellersYear, bestSellersMonth, 10)
+      console.log("[v0] Best sellers response:", data)
+
       if (data.success) {
         setBestSellersData(data.data)
         setBackendConnected(true)
+        setShowOfflineBanner(false)
       } else {
         setBestSellersData([])
+        setBackendConnected(true)
       }
     } catch (error) {
       console.error("[v0] Error loading best sellers:", error)
@@ -132,12 +150,17 @@ export default function AnalysisPage() {
   const loadTotalIncome = async () => {
     setIsLoading(true)
     try {
+      console.log("[v0] Loading total income...")
       const data = await getAnalysisTotalIncome()
+      console.log("[v0] Total income response:", data)
+
       if (data.success) {
         setTotalIncomeData(data)
         setBackendConnected(true)
+        setShowOfflineBanner(false)
       } else {
         setTotalIncomeData(null)
+        setBackendConnected(true)
       }
     } catch (error) {
       console.error("[v0] Error loading total income:", error)
@@ -284,25 +307,25 @@ export default function AnalysisPage() {
         {/* Main Content */}
         <main className="flex-1 p-8">
           {showOfflineBanner && !backendConnected && (
-            <div className="mb-6 bg-amber-50 border border-amber-200 rounded-lg p-4 flex items-start justify-between">
+            <div className="mb-6 bg-[#fff4e6] border border-[#eaac54] rounded-lg p-4">
               <div className="flex items-start gap-3">
-                <WifiOff className="w-5 h-5 text-amber-600 mt-0.5" />
-                <div>
-                  <p className="font-medium text-amber-900 mb-1">Backend Server Offline</p>
-                  <p className="text-sm text-amber-800 mb-2">
+                <AlertCircle className="w-5 h-5 text-[#eaac54] flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <h4 className="font-medium text-black mb-1">Backend Server Offline</h4>
+                  <p className="text-sm text-[#938d7a] mb-2">
                     The analysis features require the backend server to be running. Start it with:
                   </p>
-                  <code className="block bg-amber-100 text-amber-900 px-3 py-2 rounded text-sm font-mono">
+                  <code className="block bg-white px-3 py-2 rounded text-sm font-mono text-black">
                     python scripts/Backend.py
                   </code>
                 </div>
+                <button
+                  onClick={() => setShowOfflineBanner(false)}
+                  className="text-[#938d7a] hover:text-black transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
               </div>
-              <button
-                onClick={() => setShowOfflineBanner(false)}
-                className="text-amber-600 hover:text-amber-800 transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
             </div>
           )}
 

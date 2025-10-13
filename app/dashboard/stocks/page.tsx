@@ -113,11 +113,34 @@ export default function StocksPage() {
       }
 
       const result = await trainModel(salesFile, productFile)
-      alert(`Training successful! ${result.rows_uploaded} rows uploaded.`)
-      setIsUploadModalOpen(false)
-      setSalesFile(null)
-      setProductFile(null)
-      window.location.reload()
+
+      // Check if ML training was successful
+      if (result.ml_training?.status === "completed") {
+        alert(
+          `Success! ${result.data_cleaning.rows_uploaded} rows uploaded and ${result.ml_training.forecast_rows} forecasts generated. Redirecting to Predict page...`,
+        )
+        setIsUploadModalOpen(false)
+        setSalesFile(null)
+        setProductFile(null)
+        // Navigate to predict page to show forecasts
+        window.location.href = "/dashboard/predict"
+      } else if (result.ml_training?.status === "failed") {
+        alert(
+          `Data uploaded successfully (${result.data_cleaning.rows_uploaded} rows), but forecast generation failed: ${result.ml_training.message}. You can manually generate forecasts from the Predict page.`,
+        )
+        setIsUploadModalOpen(false)
+        setSalesFile(null)
+        setProductFile(null)
+        window.location.reload()
+      } else {
+        alert(
+          `Data uploaded successfully (${result.data_cleaning.rows_uploaded} rows). ${result.ml_training?.message || "Forecast generation was skipped."}`,
+        )
+        setIsUploadModalOpen(false)
+        setSalesFile(null)
+        setProductFile(null)
+        window.location.reload()
+      }
     } catch (error) {
       console.error("[v0] Upload failed:", error)
       alert(`Upload failed: ${error instanceof Error ? error.message : "Unknown error"}`)
