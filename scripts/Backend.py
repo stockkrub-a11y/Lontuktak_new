@@ -590,37 +590,102 @@ async def get_dashboard_analytics():
 @app.post("/predict")
 async def predict_sales(n_forecast: int = Query(default=3, ge=1, le=12)):
     """
-    Generate sales forecast
+    Generate sales forecast by retraining the model with data from base_data
+    and generating forecasts for the specified number of months
     """
     try:
-        print(f"[Backend] Generating forecast for {n_forecast} periods")
+        print(f"[Backend] Starting prediction with retraining for {n_forecast} months")
         
-        # TODO: Replace with actual prediction logic
-        # Example:
-        # from Predict import forcast_loop
-        # forecast_df = forcast_loop(n_forecast)
-        # return forecast_df.to_dict('records')
+        if not engine:
+            raise HTTPException(status_code=500, detail="Database not configured")
         
-        # Mock data for demonstration
-        forecast_data = []
-        base_date = datetime.now()
-        
-        for i in range(n_forecast):
-            forecast_date = base_date + timedelta(weeks=i+1)
-            forecast_data.append({
-                "product_sku": "SB-M-001",
-                "forecast_date": forecast_date.strftime("%Y-%m-%d"),
-                "predicted_sales": 45 + (i * 5),
-                "current_sales": 42,
-                "current_date_col": base_date.strftime("%Y-%m-%d")
-            })
-        
-        return {
-            "status": "success",
-            "forecast_rows": len(forecast_data),
-            "n_forecast": n_forecast,
-            "forecast": forecast_data
-        }
+        try:
+            # Step 1: Pull data from base_data table
+            print("[Backend] Step 1: Pulling data from base_data for retraining...")
+            query = """
+                SELECT 
+                    product_sku,
+                    product_name,
+                    sales_date,
+                    sales_year,
+                    sales_month,
+                    total_quantity
+                FROM base_data
+                ORDER BY sales_date ASC
+            """
+            
+            df_for_training = pd.read_sql(query, engine)
+            print(f"[Backend] Retrieved {len(df_for_training)} rows from base_data")
+            
+            if len(df_for_training) < 12:
+                return {
+                    "status": "error",
+                    "forecast_rows": 0,
+                    "n_forecast": n_forecast,
+                    "forecast": [],
+                    "message": "Not enough historical data for prediction (need at least 12 months)"
+                }
+            
+            # Step 2: Retrain the model
+            print("[Backend] Step 2: Retraining ML model...")
+            df_window_raw, df_window, base_model, X_train, y_train, X_test, y_test, product_sku_last = update_model_and_train(df_for_training)
+            print(f"[Backend] ✅ Model retrained successfully")
+            
+            # Step 3: Generate forecasts for n_forecast months
+            print(f"[Backend] Step 3: Generating {n_forecast} month forecasts...")
+            long_forecast, long_forecast_rows = forcast_loop(
+                X_train, 
+                y_train, 
+                df_window_raw, 
+                product_sku_last, 
+                base_model, 
+                n_forecast=n_forecast,
+                retrain_each_step=True
+            )
+            
+            print(f"[Backend] ✅ Generated {len(long_forecast)} forecast records")
+            
+            # Step 4: Save forecast to database (replace old data)
+            print("[Backend] Step 4: Saving new forecasts to database...")
+            long_forecast.to_sql(
+                'forecast_output',
+                engine,
+                if_exists='replace',
+                index=False,
+                method='multi'
+            )
+            print(f"[Backend] ✅ Forecasts saved to forecast_output table")
+            
+            # Step 5: Convert to response format
+            forecast_data = []
+            for _, row in long_forecast.iterrows():
+                forecast_data.append({
+                    "product_sku": row['product_sku'],
+                    "forecast_date": row['forecast_date'].strftime("%Y-%m-%d") if pd.notna(row['forecast_date']) else None,
+                    "predicted_sales": float(row['predicted_sales']) if pd.notna(row['predicted_sales']) else 0,
+                    "current_sales": float(row['current_sale']) if pd.notna(row['current_sale']) else 0,
+                    "current_date_col": row['current_date_col'].strftime("%Y-%m-%d") if pd.notna(row['current_date_col']) else None
+                })
+            
+            print(f"[Backend] ✅ Prediction completed successfully")
+            
+            return {
+                "status": "success",
+                "forecast_rows": len(forecast_data),
+                "n_forecast": n_forecast,
+                "forecast": forecast_data,
+                "message": f"Model retrained and {n_forecast} month forecast generated successfully"
+            }
+            
+        except Exception as ml_error:
+            print(f"[Backend] ❌ Prediction error: {str(ml_error)}")
+            return {
+                "status": "error",
+                "forecast_rows": 0,
+                "n_forecast": n_forecast,
+                "forecast": [],
+                "message": f"Prediction failed: {str(ml_error)}"
+            }
         
     except Exception as e:
         print(f"[Backend] Error in predict_sales: {str(e)}")
