@@ -1186,6 +1186,83 @@ async def get_total_income():
         print(f"[Backend] Error in get_total_income: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch total income: {str(e)}")
 
+# ============================================================================
+# ANALYSIS ENDPOINTS
+# ============================================================================
+
+@app.get("/analysis/base_skus")
+async def get_base_skus(search: str = Query(default="")):
+    """
+    Get unique base SKUs (without size suffix) for autocomplete
+    Filters by search term if provided
+    """
+    try:
+        print(f"[Backend] Fetching base SKUs with search: '{search}'")
+        
+        if not engine:
+            return {
+                "success": False,
+                "message": "Database not configured",
+                "base_skus": []
+            }
+        
+        try:
+            # Query unique product SKUs from base_data
+            query = """
+                SELECT DISTINCT product_sku
+                FROM base_data
+                ORDER BY product_sku ASC
+            """
+            
+            df = pd.read_sql(query, engine)
+            
+            if df.empty:
+                return {
+                    "success": False,
+                    "message": "No data available",
+                    "base_skus": []
+                }
+            
+            # Extract base SKUs (remove size suffix)
+            base_skus = set()
+            for sku in df['product_sku']:
+                # Split by last hyphen to remove size suffix
+                parts = str(sku).rsplit('-', 1)
+                if len(parts) > 0:
+                    base_sku = parts[0]
+                    base_skus.add(base_sku)
+            
+            # Convert to sorted list
+            base_skus_list = sorted(list(base_skus))
+            
+            # Filter by search term if provided
+            if search and search.strip():
+                search_upper = search.strip().upper()
+                base_skus_list = [
+                    sku for sku in base_skus_list 
+                    if search_upper in sku.upper()
+                ]
+            
+            print(f"[Backend] ✅ Found {len(base_skus_list)} base SKUs")
+            
+            return {
+                "success": True,
+                "base_skus": base_skus_list[:50],  # Limit to 50 results
+                "total": len(base_skus_list)
+            }
+            
+        except Exception as e:
+            print(f"[Backend] Error querying base SKUs: {str(e)}")
+            return {
+                "success": False,
+                "message": f"Error: {str(e)}",
+                "base_skus": []
+            }
+        
+    except Exception as e:
+        print(f"[Backend] Error in get_base_skus: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch base SKUs: {str(e)}")
+
 
 # ============================================================================
 # RUN SERVER

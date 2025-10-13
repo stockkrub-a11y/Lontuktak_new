@@ -329,3 +329,16 @@ export async function clearForecasts() {
     throw error
   }
 }
+
+export async function getAnalysisBaseSKUs(search = "") {
+  try {
+    return await apiFetch<{
+      success: boolean
+      base_skus: string[]
+      total: number
+    }>(`/analysis/base_skus?search=${encodeURIComponent(search)}`)
+  } catch (error) {
+    console.error("[v0] Failed to fetch base SKUs:", error)
+    return { success: false, base_skus: [], total: 0 }
+  }
+}

@@ -20,7 +20,6 @@ import {
   AlertCircle,
 } from "lucide-react"
 import {
-  Line,
   LineChart,
   XAxis,
   YAxis,
@@ -37,6 +36,7 @@ import {
   getAnalysisPerformance,
   getAnalysisBestSellers,
   getAnalysisTotalIncome,
+  getAnalysisBaseSKUs, // Added import for base SKUs
 } from "@/lib/api"
 
 const allProducts = ["Shinchan Boxers", "Deep Sleep", "Long Pants", "Basic T-Shirt", "Premium Shirt"]
@@ -49,6 +49,10 @@ export default function AnalysisPage() {
   const dropdownRef = useRef<HTMLDivElement>(null)
 
   const [historicalSku, setHistoricalSku] = useState("")
+  const [skuSuggestions, setSkuSuggestions] = useState<string[]>([])
+  const [showSkuDropdown, setShowSkuDropdown] = useState(false)
+  const skuInputRef = useRef<HTMLDivElement>(null)
+
   const [historicalData, setHistoricalData] = useState<any>(null)
   const [performanceData, setPerformanceData] = useState<any>(null)
   const [bestSellersData, setBestSellersData] = useState<any[]>([])
@@ -95,6 +99,42 @@ export default function AnalysisPage() {
     } finally {
       setIsLoading(false)
     }
+  }
+
+  const fetchSkuSuggestions = async (searchTerm: string) => {
+    if (!searchTerm.trim()) {
+      setSkuSuggestions([])
+      setShowSkuDropdown(false)
+      return
+    }
+
+    try {
+      console.log("[v0] Fetching SKU suggestions for:", searchTerm)
+      const data = await getAnalysisBaseSKUs(searchTerm)
+
+      if (data.success && data.base_skus.length > 0) {
+        setSkuSuggestions(data.base_skus)
+        setShowSkuDropdown(true)
+      } else {
+        setSkuSuggestions([])
+        setShowSkuDropdown(false)
+      }
+    } catch (error) {
+      console.error("[v0] Error fetching SKU suggestions:", error)
+      setSkuSuggestions([])
+      setShowSkuDropdown(false)
+    }
+  }
+
+  const handleSkuInputChange = (value: string) => {
+    setHistoricalSku(value)
+    fetchSkuSuggestions(value)
+  }
+
+  const handleSelectSku = (sku: string) => {
+    setHistoricalSku(sku)
+    setShowSkuDropdown(false)
+    setSkuSuggestions([])
   }
 
   const loadPerformanceComparison = async () => {
@@ -174,6 +214,22 @@ export default function AnalysisPage() {
       setIsLoading(false)
     }
   }
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (skuInputRef.current && !skuInputRef.current.contains(event.target as Node)) {
+        setShowSkuDropdown(false)
+      }
+    }
+
+    if (showSkuDropdown) {
+      document.addEventListener("mousedown", handleClickOutside)
+    }
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside)
+    }
+  }, [showSkuDropdown])
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -405,15 +461,31 @@ export default function AnalysisPage() {
             <div className="bg-white rounded-lg p-6 border border-[#cecabf]/30">
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-xl font-bold text-black">Historical Sales</h3>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="Enter SKU or Base SKU..."
-                    value={historicalSku}
-                    onChange={(e) => setHistoricalSku(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && loadHistoricalSales()}
-                    className="px-4 py-2 rounded-lg border border-[#cecabf] text-sm text-black outline-none focus:border-[#938d7a]"
-                  />
+                <div className="flex gap-2 relative" ref={skuInputRef}>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder="Search base SKU (e.g., SC-THU-0014)..."
+                      value={historicalSku}
+                      onChange={(e) => handleSkuInputChange(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && loadHistoricalSales()}
+                      onFocus={() => historicalSku.trim() && skuSuggestions.length > 0 && setShowSkuDropdown(true)}
+                      className="w-80 px-4 py-2 rounded-lg border border-[#cecabf] text-sm text-black outline-none focus:border-[#938d7a]"
+                    />
+                    {showSkuDropdown && skuSuggestions.length > 0 && (
+                      <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-[#cecabf] rounded-lg shadow-lg max-h-60 overflow-y-auto z-50">
+                        {skuSuggestions.map((sku) => (
+                          <button
+                            key={sku}
+                            onClick={() => handleSelectSku(sku)}
+                            className="w-full px-4 py-2 text-left text-sm text-black hover:bg-[#f8f5ee] transition-colors"
+                          >
+                            {sku}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                   <button
                     onClick={loadHistoricalSales}
                     disabled={isLoading || !historicalSku.trim()}
@@ -426,7 +498,8 @@ export default function AnalysisPage() {
 
               {!historicalSku.trim() && !historicalData && (
                 <div className="text-center py-12 text-[#938d7a]">
-                  <p>Enter a SKU above and click Search to view historical sales data</p>
+                  <p>Enter a base SKU above to view historical sales data across all sizes</p>
+                  <p className="text-xs mt-2">Example: SC-THU-0014 (without size suffix like -DRS-L)</p>
                 </div>
               )}
 
@@ -685,42 +758,34 @@ export default function AnalysisPage() {
                           <XAxis
                             dataKey="month"
                             stroke="#938d7a"
-                            label={{ value: "Months", position: "insideBottom", offset: -5 }}
+                            label={{ value: "Month", position: "insideBottom", offset: -5 }}
                           />
-                          <YAxis stroke="#938d7a" />
-                          <Line
-                            type="monotone"
-                            dataKey="income"
-                            stroke="#000000"
-                            strokeWidth={2}
-                            dot={{ fill: "#000000", r: 5 }}
-                          />
+                          <YAxis stroke="#938d7a" label={{ value: "Income (฿)", angle: -90, position: "insideLeft" }} />
+                          <Legend />
+                          <Bar dataKey="total_income" fill="#938d7a" name="Total Income (฿)" />
                         </LineChart>
                       </ResponsiveContainer>
                     </div>
 
+                    {/* Table */}
                     <div className="overflow-x-auto">
                       <table className="w-full">
                         <thead>
                           <tr className="border-b border-[#efece3]">
-                            <th className="text-left py-3 px-4 text-sm font-medium text-black">SKU</th>
-                            <th className="text-left py-3 px-4 text-sm font-medium text-black">Product Name</th>
-                            <th className="text-center py-3 px-4 text-sm font-medium text-black">Months Active</th>
-                            <th className="text-right py-3 px-4 text-sm font-medium text-black">Total Income</th>
-                            <th className="text-right py-3 px-4 text-sm font-medium text-black">Avg Monthly Income</th>
+                            <th className="text-left py-3 px-4 text-sm font-medium text-black">Product</th>
+                            <th className="text-right py-3 px-4 text-sm font-medium text-black">Avg Monthly Revenue</th>
+                            <th className="text-right py-3 px-4 text-sm font-medium text-black">Total Quantity</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {totalIncomeData.table_data.slice(0, 20).map((item: any, index: number) => (
-                            <tr key={index} className="border-b border-[#efece3]">
-                              <td className="py-3 px-4 text-sm text-black">{item.Product_SKU}</td>
-                              <td className="py-3 px-4 text-sm text-black">{item.Product_name || "N/A"}</td>
-                              <td className="py-3 px-4 text-sm text-black text-center">{item.Months_Active}</td>
-                              <td className="py-3 px-4 text-sm text-black text-right">
-                                ฿{Math.round(item.Total_Revenue_Baht).toLocaleString()}
-                              </td>
+                          {totalIncomeData.table_data.map((item: any, idx: number) => (
+                            <tr key={idx} className="border-b border-[#efece3]">
+                              <td className="py-3 px-4 text-sm text-black">{item.Product_name}</td>
                               <td className="py-3 px-4 text-sm text-black text-right">
                                 ฿{Math.round(item.Avg_Monthly_Revenue_Baht).toLocaleString()}
+                              </td>
+                              <td className="py-3 px-4 text-sm text-black text-right">
+                                {item.Total_Quantity.toLocaleString()}
                               </td>
                             </tr>
                           ))}
@@ -732,7 +797,7 @@ export default function AnalysisPage() {
               ) : (
                 <div className="bg-white rounded-lg p-6 border border-[#cecabf]/30">
                   <div className="text-center py-12 text-[#938d7a]">
-                    <p>{isLoading ? "Loading total income data..." : "No income data available"}</p>
+                    <p>Loading total income data...</p>
                   </div>
                 </div>
               )}
@@ -740,6 +805,61 @@ export default function AnalysisPage() {
           )}
         </main>
       </div>
+
+      {/* Product Selection Dropdown */}
+      {showProductDropdown && (
+        <div
+          ref={dropdownRef}
+          className="fixed inset-0 bg-black/20 flex items-center justify-center z-50"
+          onClick={() => setShowProductDropdown(false)}
+        >
+          <div
+            className="bg-white rounded-lg p-6 w-96 max-h-[80vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h4 className="font-bold text-black">Select Products (Max 3)</h4>
+              <button onClick={() => setShowProductDropdown(false)} className="text-[#938d7a] hover:text-black">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <input
+              type="text"
+              placeholder="Search products..."
+              value={productSearch}
+              onChange={(e) => setProductSearch(e.target.value)}
+              className="w-full px-3 py-2 mb-4 rounded-lg border border-[#cecabf] text-sm text-black outline-none focus:border-[#938d7a]"
+            />
+
+            <div className="space-y-2">
+              {filteredProducts.map((product) => (
+                <button
+                  key={product}
+                  onClick={() => toggleProduct(product)}
+                  disabled={!selectedProducts.includes(product) && selectedProducts.length >= 3}
+                  className={`w-full text-left px-4 py-3 rounded-lg border transition-all ${
+                    selectedProducts.includes(product)
+                      ? "bg-[#cecabf] border-[#938d7a] text-black"
+                      : "bg-white border-[#efece3] text-black hover:bg-[#f8f5ee]"
+                  } disabled:opacity-50 disabled:cursor-not-allowed`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium">{product}</span>
+                    {selectedProducts.includes(product) && (
+                      <span className="text-xs bg-white px-2 py-1 rounded">Selected</span>
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            <div className="mt-4 pt-4 border-t border-[#efece3]">
+              <p className="text-xs text-[#938d7a]">Selected: {selectedProducts.length}/3 products</p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
