@@ -53,8 +53,8 @@ export default function AnalysisPage() {
   const [performanceData, setPerformanceData] = useState<any>(null)
   const [bestSellersData, setBestSellersData] = useState<any[]>([])
   const [totalIncomeData, setTotalIncomeData] = useState<any>(null)
-  const [bestSellersYear, setBestSellersYear] = useState(new Date().getFullYear())
-  const [bestSellersMonth, setBestSellersMonth] = useState(new Date().getMonth() + 1)
+  const [bestSellersYear, setBestSellersYear] = useState<number>(new Date().getFullYear())
+  const [bestSellersMonth, setBestSellersMonth] = useState<number>(new Date().getMonth() + 1)
   const [isLoading, setIsLoading] = useState(false)
 
   const [backendConnected, setBackendConnected] = useState(true)
@@ -125,8 +125,11 @@ export default function AnalysisPage() {
   const loadBestSellers = async () => {
     setIsLoading(true)
     try {
-      console.log("[v0] Loading best sellers for:", bestSellersYear, bestSellersMonth)
-      const data = await getAnalysisBestSellers(bestSellersYear, bestSellersMonth, 10)
+      const validYear = Number.isNaN(bestSellersYear) ? new Date().getFullYear() : bestSellersYear
+      const validMonth = Number.isNaN(bestSellersMonth) ? new Date().getMonth() + 1 : bestSellersMonth
+
+      console.log("[v0] Loading best sellers for:", validYear, validMonth)
+      const data = await getAnalysisBestSellers(validYear, validMonth, 10)
       console.log("[v0] Best sellers response:", data)
 
       if (data.success) {
@@ -571,15 +574,21 @@ export default function AnalysisPage() {
                   <input
                     type="number"
                     placeholder="Year"
-                    value={bestSellersYear}
-                    onChange={(e) => setBestSellersYear(Number.parseInt(e.target.value))}
+                    value={bestSellersYear || ""}
+                    onChange={(e) => {
+                      const val = e.target.value
+                      setBestSellersYear(val === "" ? new Date().getFullYear() : Number.parseInt(val, 10))
+                    }}
                     className="w-24 px-3 py-2 rounded-lg border border-[#cecabf] text-sm text-black outline-none focus:border-[#938d7a]"
                   />
                   <input
                     type="number"
                     placeholder="Month"
-                    value={bestSellersMonth}
-                    onChange={(e) => setBestSellersMonth(Number.parseInt(e.target.value))}
+                    value={bestSellersMonth || ""}
+                    onChange={(e) => {
+                      const val = e.target.value
+                      setBestSellersMonth(val === "" ? new Date().getMonth() + 1 : Number.parseInt(val, 10))
+                    }}
                     min="1"
                     max="12"
                     className="w-20 px-3 py-2 rounded-lg border border-[#cecabf] text-sm text-black outline-none focus:border-[#938d7a]"
