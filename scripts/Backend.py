@@ -10,7 +10,7 @@ from typing import Optional, List
 import pandas as pd
 import io
 import uvicorn
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 import os
 import numpy as np
@@ -18,6 +18,7 @@ import tempfile
 import shutil
 
 from Auto_cleaning import auto_cleaning, check_db_status
+from DB_server import engine
 
 # ============================================================================
 # DATABASE CONFIGURATION
@@ -29,18 +30,18 @@ from Auto_cleaning import auto_cleaning, check_db_status
 # MySQL: "mysql+pymysql://username:password@localhost:3306/database_name"
 # SQLite: "sqlite:///./lontuktak.db"
 
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "sqlite:///./lontuktak.db"  # Default to SQLite for easy setup
-)
+# DATABASE_URL = os.getenv(
+#     "DATABASE_URL",
+#     "sqlite:///./lontuktak.db"  # Default to SQLite for easy setup
+# )
 
 # Create database engine
-try:
-    engine = create_engine(DATABASE_URL, echo=True)
-    print(f"[Backend] Database connected: {DATABASE_URL}")
-except Exception as e:
-    print(f"[Backend] Database connection failed: {str(e)}")
-    engine = None
+# try:
+#     engine = create_engine(DATABASE_URL, echo=True)
+#     print(f"[Backend] Database connected: {DATABASE_URL}")
+# except Exception as e:
+#     print(f"[Backend] Database connection failed: {str(e)}")
+#     engine = None
 
 # Initialize FastAPI app
 app = FastAPI(title="Lon TukTak API", version="1.0.0")
