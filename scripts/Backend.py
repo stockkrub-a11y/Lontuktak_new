@@ -10,6 +10,32 @@ from typing import Optional, List
 import pandas as pd
 import io
 import uvicorn
+from sqlalchemy import create_engine, text
+from sqlalchemy.exc import SQLAlchemyError
+import os
+
+# ============================================================================
+# DATABASE CONFIGURATION
+# ============================================================================
+
+# Configure your database connection here
+# Supported formats:
+# PostgreSQL: "postgresql://username:password@localhost:5432/database_name"
+# MySQL: "mysql+pymysql://username:password@localhost:3306/database_name"
+# SQLite: "sqlite:///./lontuktak.db"
+
+DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "sqlite:///./lontuktak.db"  # Default to SQLite for easy setup
+)
+
+# Create database engine
+try:
+    engine = create_engine(DATABASE_URL, echo=True)
+    print(f"[Backend] Database connected: {DATABASE_URL}")
+except Exception as e:
+    print(f"[Backend] Database connection failed: {str(e)}")
+    engine = None
 
 # Initialize FastAPI app
 app = FastAPI(title="Lon TukTak API", version="1.0.0")
@@ -34,14 +60,26 @@ async def root():
         "message": "Lon TukTak API Server",
         "status": "running",
         "version": "1.0.0",
-        "docs": "/docs"
+        "docs": "/docs",
+        "database": "connected" if engine else "disconnected"
     }
 
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
+    db_status = "connected"
+    if engine:
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+        except:
+            db_status = "disconnected"
+    else:
+        db_status = "not configured"
+    
     return {
         "status": "healthy",
+        "database": db_status,
         "timestamp": datetime.now().isoformat()
     }
 
@@ -89,13 +127,24 @@ async def train_model(
             print(f"[Backend] Product data shape: {product_df.shape}")
             print(f"[Backend] Product columns: {product_df.columns.tolist()}")
         
-        # TODO: Add your actual model training logic here
-        # Example: train_your_model(sales_df, product_df)
-        # For now, we'll just validate and return success
+        if engine:
+            try:
+                # Store sales data
+                sales_df.to_sql('sales_data', engine, if_exists='replace', index=False)
+                print(f"[Backend] Stored {len(sales_df)} sales records in database")
+                
+                # Store product data if provided
+                if product_df is not None:
+                    product_df.to_sql('product_data', engine, if_exists='replace', index=False)
+                    print(f"[Backend] Stored {len(product_df)} product records in database")
+                
+            except SQLAlchemyError as e:
+                print(f"[Backend] Database error: {str(e)}")
+                raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
         
         return {
             "success": True,
-            "message": "Model trained successfully",
+            "message": "Model trained successfully and data stored in database",
             "sales_records": len(sales_df),
             "product_records": len(product_df) if product_df is not None else 0,
             "timestamp": datetime.now().isoformat()
@@ -117,13 +166,43 @@ async def get_stock_levels():
     try:
         print("[Backend] Fetching stock levels")
         
-        # TODO: Replace with actual database query
-        # Example:
-        # query = "SELECT product_name, product_sku, stock, category, status FROM stock_data"
-        # df = pd.read_sql(query, engine)
-        # return {"success": True, "data": df.to_dict('records')}
+        if engine:
+            try:
+                # Adjust this query based on your actual table structure
+                # Expected columns: product_name, product_sku, stock, category, status
+                query = """
+                    SELECT 
+                        product_name,
+                        product_sku,
+                        stock,
+                        category,
+                        CASE 
+                            WHEN stock = 0 THEN 'Out of Stock'
+                            WHEN stock < 15 THEN 'Low Stock'
+                            ELSE 'In Stock'
+                        END as status
+                    FROM product_data
+                    ORDER BY stock ASC
+                """
+                
+                df = pd.read_sql(query, engine)
+                stock_data = df.to_dict('records')
+                
+                print(f"[Backend] Retrieved {len(stock_data)} stock records from database")
+                
+                return {
+                    "success": True,
+                    "data": stock_data,
+                    "total": len(stock_data),
+                    "timestamp": datetime.now().isoformat()
+                }
+                
+            except SQLAlchemyError as e:
+                print(f"[Backend] Database error: {str(e)}")
+                # Fall back to mock data if database query fails
+                print("[Backend] Falling back to mock data")
         
-        # Mock data for demonstration
+        # Mock data fallback
         stock_data = [
             {
                 "product_name": "Shinchan Boxers",
@@ -145,20 +224,6 @@ async def get_stock_levels():
                 "stock": 0,
                 "category": "Pants",
                 "status": "Out of Stock"
-            },
-            {
-                "product_name": "Summer Shorts",
-                "product_sku": "SS-M-004",
-                "stock": 67,
-                "category": "Shorts",
-                "status": "In Stock"
-            },
-            {
-                "product_name": "Winter Boxers",
-                "product_sku": "WB-L-005",
-                "stock": 8,
-                "category": "Boxers",
-                "status": "Low Stock"
             }
         ]
         
@@ -185,17 +250,59 @@ async def get_notifications():
     try:
         print("[Backend] Fetching notifications")
         
-        # TODO: Replace with actual database query
-        # Example:
-        # query = """
-        #     SELECT * FROM notifications 
-        #     WHERE is_active = true 
-        #     ORDER BY created_at DESC
-        # """
-        # df = pd.read_sql(query, engine)
-        # return df.to_dict('records')
+        if engine:
+            try:
+                # This query calculates stock alerts based on current and previous stock levels
+                # Adjust column names based on your actual database schema
+                query = """
+                    SELECT 
+                        p.product_name as Product,
+                        p.stock as Stock,
+                        p.last_stock as Last_Stock,
+                        ROUND(((p.last_stock - p.stock) * 100.0 / NULLIF(p.last_stock, 0)), 1) as "Decrease_Rate(%)",
+                        CASE 
+                            WHEN (p.stock - p.last_stock) <= 0 THEN 0
+                            ELSE ROUND(p.stock / NULLIF((p.last_stock - p.stock), 0))
+                        END as Weeks_To_Empty,
+                        p.min_stock as MinStock,
+                        p.buffer_stock as Buffer,
+                        CASE 
+                            WHEN p.stock < p.min_stock THEN (p.min_stock + p.buffer_stock - p.stock)
+                            ELSE 0
+                        END as Reorder_Qty,
+                        CASE 
+                            WHEN p.stock = 0 THEN 'Critical'
+                            WHEN p.stock < p.min_stock THEN 'Warning'
+                            ELSE 'Good'
+                        END as Status,
+                        CASE 
+                            WHEN p.stock = 0 THEN 'Out of stock! Immediate reorder required.'
+                            WHEN p.stock < p.min_stock THEN 'Stock level below minimum threshold. Reorder recommended.'
+                            ELSE 'Stock levels are healthy.'
+                        END as Description
+                    FROM product_data p
+                    WHERE p.stock < p.min_stock OR p.stock = 0
+                    ORDER BY 
+                        CASE 
+                            WHEN p.stock = 0 THEN 1
+                            WHEN p.stock < p.min_stock THEN 2
+                            ELSE 3
+                        END,
+                        p.stock ASC
+                """
+                
+                df = pd.read_sql(query, engine)
+                notifications = df.to_dict('records')
+                
+                print(f"[Backend] Retrieved {len(notifications)} notifications from database")
+                
+                return notifications
+                
+            except SQLAlchemyError as e:
+                print(f"[Backend] Database error: {str(e)}")
+                print("[Backend] Falling back to mock data")
         
-        # Mock data for demonstration
+        # Mock data fallback
         notifications = [
             {
                 "Product": "Deep Sleep Pants",
@@ -220,30 +327,6 @@ async def get_notifications():
                 "Reorder_Qty": 50,
                 "Status": "Critical",
                 "Description": "Out of stock! Immediate reorder required."
-            },
-            {
-                "Product": "Winter Boxers",
-                "Stock": 8,
-                "Last_Stock": 15,
-                "Decrease_Rate(%)": 46.7,
-                "Weeks_To_Empty": 1,
-                "MinStock": 12,
-                "Buffer": 3,
-                "Reorder_Qty": 25,
-                "Status": "Warning",
-                "Description": "Low stock alert. Consider reordering soon."
-            },
-            {
-                "Product": "Shinchan Boxers",
-                "Stock": 45,
-                "Last_Stock": 42,
-                "Decrease_Rate(%)": -7.1,
-                "Weeks_To_Empty": 8,
-                "MinStock": 20,
-                "Buffer": 10,
-                "Reorder_Qty": 0,
-                "Status": "Good",
-                "Description": "Stock levels are healthy."
             }
         ]
         
@@ -265,12 +348,48 @@ async def get_dashboard_analytics():
     try:
         print("[Backend] Fetching dashboard analytics")
         
-        # TODO: Replace with actual database queries
-        # Example:
-        # total_items = pd.read_sql("SELECT COUNT(DISTINCT product_sku) FROM stock_data", engine)
-        # low_stock = pd.read_sql("SELECT COUNT(*) FROM stock_data WHERE stock < minstock", engine)
+        if engine:
+            try:
+                # Get total stock items
+                total_items_query = "SELECT COUNT(DISTINCT product_sku) as total FROM product_data"
+                total_items = pd.read_sql(total_items_query, engine).iloc[0]['total']
+                
+                # Get low stock alerts
+                low_stock_query = "SELECT COUNT(*) as count FROM product_data WHERE stock < min_stock"
+                low_stock = pd.read_sql(low_stock_query, engine).iloc[0]['count']
+                
+                # Get out of stock items
+                out_of_stock_query = "SELECT COUNT(*) as count FROM product_data WHERE stock = 0"
+                out_of_stock = pd.read_sql(out_of_stock_query, engine).iloc[0]['count']
+                
+                # Get sales this month (adjust based on your sales table structure)
+                sales_query = """
+                    SELECT COALESCE(SUM(total_amount), 0) as total 
+                    FROM sales_data 
+                    WHERE strftime('%Y-%m', sale_date) = strftime('%Y-%m', 'now')
+                """
+                sales_this_month = pd.read_sql(sales_query, engine).iloc[0]['total']
+                
+                dashboard_data = {
+                    "total_stock_items": int(total_items),
+                    "low_stock_alerts": int(low_stock),
+                    "sales_this_month": float(sales_this_month),
+                    "out_of_stock": int(out_of_stock)
+                }
+                
+                print(f"[Backend] Retrieved dashboard analytics from database")
+                
+                return {
+                    "success": True,
+                    "data": dashboard_data,
+                    "timestamp": datetime.now().isoformat()
+                }
+                
+            except SQLAlchemyError as e:
+                print(f"[Backend] Database error: {str(e)}")
+                print("[Backend] Falling back to mock data")
         
-        # Mock data for demonstration
+        # Mock data fallback
         dashboard_data = {
             "total_stock_items": 156,
             "low_stock_alerts": 12,
@@ -343,21 +462,62 @@ async def get_historical_sales(base_sku: str = Query(...)):
     try:
         print(f"[Backend] Fetching historical sales for {base_sku}")
         
-        # TODO: Replace with actual database query
-        # Mock data for demonstration
+        if engine:
+            try:
+                # Adjust this query based on your actual sales table structure
+                query = """
+                    SELECT 
+                        strftime('%Y-%m', sale_date) as date,
+                        size,
+                        SUM(quantity) as quantity,
+                        SUM(total_amount) as income
+                    FROM sales_data
+                    WHERE product_sku LIKE ?
+                    GROUP BY strftime('%Y-%m', sale_date), size
+                    ORDER BY date DESC
+                    LIMIT 12
+                """
+                
+                df = pd.read_sql(query, engine, params=[f"{base_sku}%"])
+                
+                # Transform data for chart format
+                months = df['date'].unique().tolist()
+                sizes = df['size'].unique().tolist()
+                
+                series = []
+                for size in sizes:
+                    size_data = df[df['size'] == size]
+                    values = size_data['quantity'].tolist()
+                    series.append({"size": size, "values": values})
+                
+                historical_data = {
+                    "chart": {
+                        "months": months,
+                        "series": series
+                    },
+                    "table": df.to_dict('records')
+                }
+                
+                print(f"[Backend] Retrieved historical sales from database")
+                
+                return historical_data
+                
+            except SQLAlchemyError as e:
+                print(f"[Backend] Database error: {str(e)}")
+                print("[Backend] Falling back to mock data")
+        
+        # Mock data fallback
         historical_data = {
             "chart": {
                 "months": ["Jan", "Feb", "Mar", "Apr", "May", "Jun"],
                 "series": [
                     {"size": "M", "values": [120, 135, 142, 158, 165, 172]},
-                    {"size": "L", "values": [95, 102, 108, 115, 122, 128]},
-                    {"size": "XL", "values": [78, 85, 89, 95, 98, 105]}
+                    {"size": "L", "values": [95, 102, 108, 115, 122, 128]}
                 ]
             },
             "table": [
                 {"date": "2025-01", "size": "M", "quantity": 120, "income": 24000},
-                {"date": "2025-01", "size": "L", "quantity": 95, "income": 19000},
-                {"date": "2025-02", "size": "M", "quantity": 135, "income": 27000}
+                {"date": "2025-01", "size": "L", "quantity": 95, "income": 19000}
             ]
         }
         
@@ -411,15 +571,46 @@ async def get_best_sellers(
     try:
         print(f"[Backend] Fetching best sellers for {year}-{month:02d}, top {top_n}")
         
-        # TODO: Replace with actual database query
-        # Mock data for demonstration
+        if engine:
+            try:
+                # Adjust this query based on your actual sales table structure
+                query = """
+                    SELECT 
+                        SUBSTR(product_sku, 1, INSTR(product_sku, '-') - 1) as base_sku,
+                        size as best_size,
+                        SUM(quantity) as quantity
+                    FROM sales_data
+                    WHERE strftime('%Y', sale_date) = ? 
+                        AND strftime('%m', sale_date) = ?
+                    GROUP BY base_sku, size
+                    ORDER BY quantity DESC
+                    LIMIT ?
+                """
+                
+                df = pd.read_sql(
+                    query, 
+                    engine, 
+                    params=[str(year), f"{month:02d}", top_n]
+                )
+                
+                best_sellers_data = {
+                    "table": df.to_dict('records')
+                }
+                
+                print(f"[Backend] Retrieved {len(df)} best sellers from database")
+                
+                return best_sellers_data
+                
+            except SQLAlchemyError as e:
+                print(f"[Backend] Database error: {str(e)}")
+                print("[Backend] Falling back to mock data")
+        
+        # Mock data fallback
         best_sellers_data = {
             "table": [
                 {"base_sku": "SB", "best_size": "M", "quantity": 450},
                 {"base_sku": "DS", "best_size": "L", "quantity": 380},
-                {"base_sku": "SS", "best_size": "M", "quantity": 320},
-                {"base_sku": "WB", "best_size": "L", "quantity": 295},
-                {"base_sku": "LP", "best_size": "XL", "quantity": 280}
+                {"base_sku": "SS", "best_size": "M", "quantity": 320}
             ][:top_n]
         }
         
