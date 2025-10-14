@@ -52,4 +52,4 @@ After restarting, check that these endpoints work:
 All 404 errors should be resolved!
 \`\`\`
 
-```typescript file="" isHidden
+\`\`\`typescript file="" isHidden
