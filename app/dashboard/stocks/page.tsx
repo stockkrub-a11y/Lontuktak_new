@@ -212,19 +212,6 @@ export default function StocksPage() {
             <p className="text-xs text-[#938d7a]">Stock Management</p>
           </div>
 
-          <div className="flex-1 max-w-xl mx-8">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#938d7a]" />
-              <input
-                type="text"
-                placeholder="Search for stocks & more"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 bg-[#f8f5ee] rounded-lg border-none outline-none text-sm text-black placeholder:text-[#938d7a] focus:ring-2 focus:ring-[#938d7a]/20"
-              />
-            </div>
-          </div>
-
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 px-3 py-1.5 bg-[#f8f5ee] rounded-lg">
               {backendConnected ? (
@@ -439,8 +426,8 @@ export default function StocksPage() {
                 <p className="text-[#938d7a] mb-2">No stock data available</p>
                 <p className="text-sm text-[#938d7a]">
                   {backendConnected
-                    ? "Please upload your product list and sales stock files to get started."
-                    : "Start the backend server and upload files to see stock data."}
+                    ? "Please upload stock files in the Notifications page to view stock data here."
+                    : "Start the backend server and upload files in the Notifications page."}
                 </p>
               </div>
             ) : (

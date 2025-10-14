@@ -218,7 +218,6 @@ export default function NotificationsPage() {
   }
 
   const handleUpload = async () => {
-    // If base_stock exists, only current stock is required
     if (baseStockExists && !currentStockFile) {
       alert("Please upload current stock file")
       return
@@ -298,6 +297,31 @@ export default function NotificationsPage() {
       alert(`Upload failed: ${error instanceof Error ? error.message : "Unknown error"}`)
     } finally {
       setIsUploading(false)
+    }
+  }
+
+  const handleClearBaseStock = async () => {
+    if (!confirm("Are you sure you want to clear the base stock database? This will reset all stock history.")) {
+      return
+    }
+
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+      const response = await fetch(`${apiUrl}/notifications/clear_base_stock`, {
+        method: "DELETE",
+      })
+
+      if (!response.ok) {
+        throw new Error("Failed to clear base stock")
+      }
+
+      alert("Base stock database cleared successfully!")
+      setBaseStockExists(false)
+      setPreviousStockFile(null)
+      setCurrentStockFile(null)
+    } catch (error) {
+      console.error("[v0] Failed to clear base stock:", error)
+      alert(`Failed to clear base stock: ${error instanceof Error ? error.message : "Unknown error"}`)
     }
   }
 
@@ -401,6 +425,15 @@ export default function NotificationsPage() {
                 <Upload className="w-4 h-4" />
                 <span className="text-sm font-medium">Upload Current Stock</span>
               </button>
+              {baseStockExists && (
+                <button
+                  onClick={handleClearBaseStock}
+                  className="flex items-center gap-2 px-4 py-2 bg-white rounded-lg border border-[#ea5457] text-[#ea5457] hover:bg-[#ffe2e2] transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                  <span className="text-sm font-medium">Clear Base Stock</span>
+                </button>
+              )}
               <button
                 onClick={() => setShowFilterModal(true)}
                 className="flex items-center gap-2 px-4 py-2 bg-white rounded-lg border border-[#cecabf] hover:bg-[#efece3] transition-colors"
@@ -415,7 +448,10 @@ export default function NotificationsPage() {
           {isLoading ? (
             <div className="text-center py-8 text-[#938d7a]">Loading notifications...</div>
           ) : notifications.length === 0 ? (
-            <div className="text-center py-8 text-[#938d7a]">No notifications available.</div>
+            <div className="text-center py-8 text-[#938d7a]">
+              <p className="mb-2">No notifications available.</p>
+              <p className="text-sm">Please upload stock files in the Notifications page to generate stock reports.</p>
+            </div>
           ) : (
             <div className="space-y-4">
               {filteredNotifications.map((notification) => (
@@ -460,7 +496,7 @@ export default function NotificationsPage() {
       {selectedNotification && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg max-w-3xl w-full p-6">
-            <div className="flex items-start justify-between mb-6">
+            <div className="flex items-center justify-between mb-6">
               <div>
                 <div className="flex items-center gap-3 mb-2">
                   <h3 className="text-xl font-bold text-black">
@@ -849,7 +885,11 @@ export default function NotificationsPage() {
               </button>
               <button
                 onClick={handleUpload}
-                disabled={!previousStockFile || !currentStockFile || isUploading}
+                disabled={
+                  baseStockExists
+                    ? !currentStockFile || isUploading
+                    : !previousStockFile || !currentStockFile || isUploading
+                }
                 className="flex-1 px-6 py-3 bg-[#cecabf] rounded-lg text-black font-medium hover:bg-[#c5c5c5] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isUploading ? "Processing..." : "Upload & Generate Report"}

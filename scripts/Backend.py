@@ -255,9 +255,32 @@ async def check_base_stock():
         print(f"[Backend] base_stock table does not exist or error: {str(e)}")
         return {"exists": False, "has_data": False}
 
-# ============================================================================
-# NOTIFICATIONS ENDPOINT
-# ============================================================================
+@app.delete("/notifications/clear_base_stock")
+async def clear_base_stock():
+    """Clear all data from base_stock table"""
+    try:
+        print("[Backend] Clearing base_stock table...")
+        
+        if not engine:
+            raise HTTPException(status_code=500, detail="Database not configured")
+        
+        # Delete all rows from base_stock
+        with engine.connect() as conn:
+            conn.execute(text("DELETE FROM base_stock"))
+            conn.commit()
+        
+        print("[Backend] ✅ base_stock table cleared successfully")
+        
+        return {
+            "success": True,
+            "message": "base_stock table cleared successfully"
+        }
+        
+    except Exception as e:
+        print(f"[Backend] Error clearing base_stock: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to clear base_stock: {str(e)}")
 
 @app.post("/notifications/upload")
 async def upload_stock_notifications(
