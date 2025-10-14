@@ -55,6 +55,27 @@ export default function NotificationsPage() {
   const [previousStockFile, setPreviousStockFile] = useState<File | null>(null)
   const [currentStockFile, setCurrentStockFile] = useState<File | null>(null)
   const [isUploading, setIsUploading] = useState(false)
+  const [baseStockExists, setBaseStockExists] = useState(false)
+  const [checkingBaseStock, setCheckingBaseStock] = useState(true)
+
+  useEffect(() => {
+    async function checkBaseStock() {
+      try {
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+        const response = await fetch(`${apiUrl}/notifications/check_base_stock`)
+        const data = await response.json()
+        console.log("[v0] base_stock check:", data)
+        setBaseStockExists(data.exists && data.has_data)
+      } catch (error) {
+        console.error("[v0] Failed to check base_stock:", error)
+        setBaseStockExists(false)
+      } finally {
+        setCheckingBaseStock(false)
+      }
+    }
+
+    checkBaseStock()
+  }, [])
 
   useEffect(() => {
     async function fetchNotifications() {
@@ -197,17 +218,26 @@ export default function NotificationsPage() {
   }
 
   const handleUpload = async () => {
-    if (!previousStockFile || !currentStockFile) {
-      alert("Please upload both previous and current stock files")
+    // If base_stock exists, only current stock is required
+    if (baseStockExists && !currentStockFile) {
+      alert("Please upload current stock file")
+      return
+    }
+
+    // If base_stock doesn't exist, both files are required
+    if (!baseStockExists && (!previousStockFile || !currentStockFile)) {
+      alert("Please upload both previous and current stock files for first-time setup")
       return
     }
 
     setIsUploading(true)
-    console.log("[v0] Uploading files:", previousStockFile.name, currentStockFile.name)
+    console.log("[v0] Uploading files...")
 
     try {
       const formData = new FormData()
-      formData.append("previous_stock", previousStockFile)
+      if (previousStockFile) {
+        formData.append("previous_stock", previousStockFile)
+      }
       formData.append("current_stock", currentStockFile)
 
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
@@ -223,13 +253,16 @@ export default function NotificationsPage() {
 
       const result = await response.json()
       console.log("[v0] Upload successful:", result)
-      alert("Stock files uploaded successfully! Notifications will be updated.")
+      alert("Stock files uploaded successfully! Notifications have been updated.")
 
       // Reset and close modals
       setIsPreviousStockModalOpen(false)
       setIsCurrentStockModalOpen(false)
       setPreviousStockFile(null)
       setCurrentStockFile(null)
+
+      // Update base_stock status
+      setBaseStockExists(true)
 
       // Refresh notifications
       const data = await getNotifications()
@@ -352,13 +385,15 @@ export default function NotificationsPage() {
               <p className="text-[#938d7a]">Stay updated with your inventory alerts</p>
             </div>
             <div className="flex gap-3">
-              <button
-                onClick={() => setIsPreviousStockModalOpen(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-white rounded-lg border border-[#cecabf] hover:bg-[#efece3] transition-colors"
-              >
-                <Upload className="w-4 h-4" />
-                <span className="text-sm font-medium">Upload Previous Stock</span>
-              </button>
+              {!checkingBaseStock && !baseStockExists && (
+                <button
+                  onClick={() => setIsPreviousStockModalOpen(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-white rounded-lg border border-[#cecabf] hover:bg-[#efece3] transition-colors"
+                >
+                  <Upload className="w-4 h-4" />
+                  <span className="text-sm font-medium">Upload Previous Stock</span>
+                </button>
+              )}
               <button
                 onClick={() => setIsCurrentStockModalOpen(true)}
                 className="flex items-center gap-2 px-4 py-2 bg-white rounded-lg border border-[#cecabf] hover:bg-[#efece3] transition-colors"

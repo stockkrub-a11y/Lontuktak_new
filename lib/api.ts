@@ -342,3 +342,16 @@ export async function getAnalysisBaseSKUs(search = "") {
     return { success: false, base_skus: [], total: 0 }
   }
 }
+
+export async function checkBaseStock() {
+  try {
+    return await apiFetch<{
+      exists: boolean
+      has_data: boolean
+      row_count?: number
+    }>("/notifications/check_base_stock")
+  } catch (error) {
+    console.error("[v0] Failed to check base_stock:", error)
+    return { exists: false, has_data: false }
+  }
+}

@@ -131,28 +131,32 @@ async def train_model(
 
 @app.get("/stock/levels")
 async def get_stock_levels():
-    """Get current stock levels"""
+    """Get current stock levels from base_stock table"""
     try:
-        print("[Backend] Fetching stock levels")
+        print("[Backend] Fetching stock levels from base_stock")
         
         if not engine:
             return {"success": False, "data": [], "message": "Database not configured"}
         
         query = """
-            SELECT DISTINCT ON (product_name)
+            SELECT 
                 product_name,
                 product_sku,
                 stock_level,
+                "หมวดหมู่" as category,
                 CASE 
                     WHEN stock_level = 0 THEN 'Out of Stock'
-                    WHEN stock_level < minstock THEN 'Low Stock'
+                    WHEN stock_level < 50 THEN 'Low Stock'
                     ELSE 'In Stock'
                 END as status
-            FROM stock_data
-            ORDER BY product_name, week_date DESC
+            FROM base_stock
+            WHERE "หมวดหมู่" IS NOT NULL
+            ORDER BY product_name
         """
         
         df = pd.read_sql(query, engine)
+        
+        print(f"[Backend] ✅ Retrieved {len(df)} stock items from base_stock")
         
         return {
             "success": True,
@@ -162,21 +166,33 @@ async def get_stock_levels():
         
     except Exception as e:
         print(f"[Backend] Error in get_stock_levels: {str(e)}")
-        try:
-            query = """
-                SELECT 
-                    product_name,
-                    product_sku,
-                    SUM(total_quantity) as stock_level,
-                    'In Stock' as status
-                FROM base_data
-                GROUP BY product_name, product_sku
-                ORDER BY product_name
-            """
-            df = pd.read_sql(query, engine)
-            return {"success": True, "data": df.to_dict('records')}
-        except Exception as e2:
-            return {"success": False, "data": [], "error": str(e2)}
+        return {"success": False, "data": [], "error": str(e)}
+
+@app.get("/notifications/check_base_stock")
+async def check_base_stock():
+    """Check if base_stock table exists and has data"""
+    try:
+        print("[Backend] Checking base_stock table...")
+        
+        if not engine:
+            return {"exists": False, "has_data": False}
+        
+        # Check if table exists and has data
+        query = "SELECT COUNT(*) as count FROM base_stock"
+        result = pd.read_sql(query, engine)
+        count = int(result.iloc[0]['count'])
+        
+        print(f"[Backend] base_stock exists with {count} rows")
+        
+        return {
+            "exists": True,
+            "has_data": count > 0,
+            "row_count": count
+        }
+        
+    except Exception as e:
+        print(f"[Backend] base_stock table does not exist or error: {str(e)}")
+        return {"exists": False, "has_data": False}
 
 # ============================================================================
 # NOTIFICATIONS ENDPOINT
@@ -184,31 +200,26 @@ async def get_stock_levels():
 
 @app.post("/notifications/upload")
 async def upload_stock_notifications(
-    previous_stock: UploadFile = File(...),
+    previous_stock: Optional[UploadFile] = File(None),
     current_stock: UploadFile = File(...)
 ):
-    """Upload previous and current stock files to generate notifications"""
+    """Upload stock files to generate notifications with base_stock logic"""
     try:
         print(f"[Backend] Received notification upload request")
-        print(f"[Backend] Previous stock file: {previous_stock.filename}")
         print(f"[Backend] Current stock file: {current_stock.filename}")
+        if previous_stock:
+            print(f"[Backend] Previous stock file: {previous_stock.filename}")
         
-        # Read the uploaded files into DataFrames
         import io
-        
-        # Read previous stock file
-        prev_content = await previous_stock.read()
-        if previous_stock.filename.endswith('.csv'):
-            df_prev = pd.read_csv(io.BytesIO(prev_content))
-        else:
-            df_prev = pd.read_excel(io.BytesIO(prev_content),header=1)
         
         # Read current stock file
         curr_content = await current_stock.read()
         if current_stock.filename.endswith('.csv'):
             df_curr = pd.read_csv(io.BytesIO(curr_content))
         else:
-            df_curr = pd.read_excel(io.BytesIO(curr_content),header=0)
+            df_curr = pd.read_excel(io.BytesIO(curr_content), header=0)
+        
+        # Rename columns to standard format
         df_curr = df_curr.rename(columns={
             "ชื่อสินค้า": "product_name",
             "เลขอ้างอิง SKU (SKU Reference No.)": "product_sku",
@@ -216,33 +227,67 @@ async def upload_stock_notifications(
             "ปริมาณคงเหลือ (Stock Level)": "stock_level",
             "จำนวน": "stock_level"
         }).copy()
-        df_prev = df_prev.rename(columns={
-            "ชื่อสินค้า": "product_name",
-            "เลขอ้างอิง SKU (SKU Reference No.)": "product_sku",
-            "รหัสสินค้า": "product_sku",
-            "ปริมาณคงเหลือ (Stock Level)": "stock_level",
-            "จำนวน": "stock_level"
-        }).copy()
-        # convert stock_level to integer (handle floats/strings; invalid -> 0)
-        df_prev['stock_level'] = pd.to_numeric(df_prev['stock_level'], errors='coerce').fillna(0).astype(int)
+        
+        # Convert stock_level to integer
         df_curr['stock_level'] = pd.to_numeric(df_curr['stock_level'], errors='coerce').fillna(0).astype(int)
-
-        print(f"[Backend] Previous stock data: {len(df_prev)} rows")
+        
         print(f"[Backend] Current stock data: {len(df_curr)} rows")
-        print(f"[Backend] Previous stock columns: {df_prev.head()}")
-        print(f"[Backend] Current stock columns: {df_curr.head()}")
+        
+        # Check if base_stock exists and has data
+        try:
+            query = "SELECT COUNT(*) as count FROM base_stock"
+            result = pd.read_sql(query, engine)
+            base_stock_exists = int(result.iloc[0]['count']) > 0
+        except:
+            base_stock_exists = False
+        
+        print(f"[Backend] base_stock exists: {base_stock_exists}")
+        
+        # Determine df_prev based on base_stock existence
+        if base_stock_exists:
+            # Pull df_prev from base_stock
+            print("[Backend] Pulling df_prev from base_stock...")
+            query = "SELECT product_name, product_sku, stock_level FROM base_stock"
+            df_prev = pd.read_sql(query, engine)
+            print(f"[Backend] Loaded {len(df_prev)} rows from base_stock")
+        else:
+            # Use uploaded previous_stock file
+            if not previous_stock:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Previous stock file is required for first-time upload"
+                )
+            
+            print("[Backend] Reading previous stock file (first time)...")
+            prev_content = await previous_stock.read()
+            if previous_stock.filename.endswith('.csv'):
+                df_prev = pd.read_csv(io.BytesIO(prev_content))
+            else:
+                df_prev = pd.read_excel(io.BytesIO(prev_content), header=1)
+            
+            df_prev = df_prev.rename(columns={
+                "ชื่อสินค้า": "product_name",
+                "เลขอ้างอิง SKU (SKU Reference No.)": "product_sku",
+                "รหัสสินค้า": "product_sku",
+                "ปริมาณคงเหลือ (Stock Level)": "stock_level",
+                "จำนวน": "stock_level"
+            }).copy()
+            
+            df_prev['stock_level'] = pd.to_numeric(df_prev['stock_level'], errors='coerce').fillna(0).astype(int)
+            print(f"[Backend] Previous stock data: {len(df_prev)} rows")
+        
         # Ensure required columns exist
         required_columns = ['product_name', 'stock_level']
         for col in required_columns:
             if col not in df_prev.columns:
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Previous stock file missing required column: {col}"
+                    detail=f"Previous stock data missing required column: {col}"
                 )
             if col not in df_curr.columns:
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Current stock file missing required column: {col}"
+                    detail=f"Current stock data missing required column: {col}"
                 )
         
         # Generate the stock report
@@ -250,26 +295,34 @@ async def upload_stock_notifications(
         report_df = generate_stock_report(df_prev, df_curr)
         print(f"[Backend] Generated report with {len(report_df)} rows")
         
-        # Store results in database
+        # Store results in stock_notifications table
         print("[Backend] Storing results in stock_notifications table...")
-        
-        # Add timestamp
         report_df['created_at'] = datetime.now()
-        
-        # Save to database
         report_df.to_sql(
             'stock_notifications',
             engine,
-            if_exists='replace',  # Replace existing data
+            if_exists='replace',
             index=False
         )
+        print(f"[Backend] ✅ Stored {len(report_df)} notifications")
         
-        print(f"[Backend] ✅ Successfully stored {len(report_df)} notifications in database")
+        # Update base_stock with df_curr (df_prev = df_curr.copy())
+        print("[Backend] Updating base_stock with current stock data...")
+        df_curr['created_at'] = datetime.now()
+        df_curr['updated_at'] = datetime.now()
+        df_curr.to_sql(
+            'base_stock',
+            engine,
+            if_exists='replace',
+            index=False
+        )
+        print(f"[Backend] ✅ Updated base_stock with {len(df_curr)} rows")
         
         return {
             "success": True,
             "message": "Stock notifications generated successfully",
             "notifications_count": len(report_df),
+            "base_stock_updated": True,
             "timestamp": datetime.now().isoformat()
         }
         
@@ -281,7 +334,7 @@ async def upload_stock_notifications(
 
 @app.get("/api/notifications")
 async def get_notifications():
-    """Get inventory notifications"""
+    """Get inventory notifications from stock_notifications table"""
     try:
         print("[Backend] Fetching notifications")
         
@@ -290,7 +343,7 @@ async def get_notifications():
             return []
         
         try:
-            print("[Backend] Checking stock_notifications table...")
+            print("[Backend] Querying stock_notifications table...")
             query = """
                 SELECT 
                     "Product",
@@ -314,28 +367,11 @@ async def get_notifications():
                 notifications = df.to_dict('records')
                 return notifications
             else:
-                print("[Backend] No notifications in database, falling back to get_notification_data()")
+                print("[Backend] No notifications in database")
+                return []
         except Exception as db_error:
-            print(f"[Backend] Database query failed: {str(db_error)}, falling back to get_notification_data()")
-        
-        # Fallback to original method
-        print("[Backend] Calling get_notification_data()...")
-        notifications = get_notification_data()
-        
-        print(f"[Backend] get_notification_data() returned type: {type(notifications)}")
-        print(f"[Backend] get_notification_data() returned value: {notifications}")
-        
-        if isinstance(notifications, dict) and "error" in notifications:
-            print(f"[Backend] ⚠️ Notification error: {notifications['error']}")
+            print(f"[Backend] Database query failed: {str(db_error)}")
             return []
-        
-        if not isinstance(notifications, list):
-            print(f"[Backend] ❌ Unexpected notification format: {type(notifications)}")
-            return []
-        
-        print(f"[Backend] ✅ Retrieved {len(notifications)} notifications")
-        print(f"[Backend] Sample notification: {notifications[0] if notifications else 'None'}")
-        return notifications
         
     except Exception as e:
         print(f"[Backend] ❌ Error in get_notifications: {str(e)}")
