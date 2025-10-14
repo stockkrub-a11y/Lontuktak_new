@@ -143,7 +143,6 @@ async def get_stock_levels():
                 product_name,
                 product_sku,
                 stock_level,
-                category,
                 CASE 
                     WHEN stock_level = 0 THEN 'Out of Stock'
                     WHEN stock_level < minstock THEN 'Low Stock'
@@ -163,17 +162,15 @@ async def get_stock_levels():
         
     except Exception as e:
         print(f"[Backend] Error in get_stock_levels: {str(e)}")
-        # Fallback to base_data
         try:
             query = """
                 SELECT 
                     product_name,
                     product_sku,
                     SUM(total_quantity) as stock_level,
-                    category,
                     'In Stock' as status
                 FROM base_data
-                GROUP BY product_name, product_sku, category
+                GROUP BY product_name, product_sku
                 ORDER BY product_name
             """
             df = pd.read_sql(query, engine)
@@ -201,12 +198,10 @@ async def get_notifications():
         print(f"[Backend] get_notification_data() returned type: {type(notifications)}")
         print(f"[Backend] get_notification_data() returned value: {notifications}")
         
-        # Handle error case - if it returns a dict with 'error' key, return empty array
         if isinstance(notifications, dict) and "error" in notifications:
             print(f"[Backend] ⚠️ Notification error: {notifications['error']}")
             return []
         
-        # Handle case where notifications is not a list
         if not isinstance(notifications, list):
             print(f"[Backend] ❌ Unexpected notification format: {type(notifications)}")
             return []
@@ -238,7 +233,6 @@ async def get_dashboard_analytics():
         current_month = current_date.month
         current_year = current_date.year
         
-        # Total stock items
         stock_query = """
             SELECT COUNT(DISTINCT product_sku) as total_items
             FROM stock_data
@@ -247,7 +241,6 @@ async def get_dashboard_analytics():
         total_items_result = pd.read_sql(stock_query, engine)
         total_items = int(total_items_result.iloc[0]['total_items']) if not total_items_result.empty else 0
         
-        # Low stock alerts
         low_stock_query = """
             SELECT COUNT(*) as low_stock_count
             FROM stock_data
@@ -258,7 +251,6 @@ async def get_dashboard_analytics():
         low_stock_result = pd.read_sql(low_stock_query, engine)
         low_stock = int(low_stock_result.iloc[0]['low_stock_count']) if not low_stock_result.empty else 0
         
-        # Out of stock
         out_of_stock_query = """
             SELECT COUNT(*) as out_of_stock_count
             FROM stock_data
@@ -268,7 +260,6 @@ async def get_dashboard_analytics():
         out_of_stock_result = pd.read_sql(out_of_stock_query, engine)
         out_of_stock = int(out_of_stock_result.iloc[0]['out_of_stock_count']) if not out_of_stock_result.empty else 0
         
-        # Sales this month
         sales_query = f"""
             SELECT COALESCE(SUM(total_amount_baht), 0) as monthly_sales
             FROM base_data
@@ -310,11 +301,9 @@ async def get_base_skus(search: str = Query("")):
         if not engine:
             return {"success": False, "data": []}
         
-        # Query all product SKUs
         query = "SELECT DISTINCT product_sku FROM base_data ORDER BY product_sku"
         df = pd.read_sql(query, engine)
         
-        # Extract base SKUs (first 3 parts: prefix-category-number)
         base_skus = set()
         for sku in df['product_sku']:
             parts = str(sku).split('-')
@@ -322,9 +311,7 @@ async def get_base_skus(search: str = Query("")):
                 base_sku = '-'.join(parts[:3])
                 base_skus.add(base_sku)
         
-        # Filter by search term
         if search:
-            # Extract base SKU from search term if it's a full SKU
             search_parts = search.split('-')
             if len(search_parts) >= 3:
                 search_base = '-'.join(search_parts[:3])
@@ -378,7 +365,6 @@ async def get_historical_sales(sku: str = Query(...)):
             ORDER BY sales_date ASC, product_sku ASC
         """)
         
-        # Execute query with parameters
         with engine.connect() as conn:
             result = conn.execute(query, {"sku_pattern": f"{sku}%"})
             df = pd.DataFrame(result.fetchall(), columns=result.keys())
@@ -394,23 +380,18 @@ async def get_historical_sales(sku: str = Query(...)):
                 "sizes": []
             }
         
-        # Extract size from SKU (everything after first 3 parts)
         df['size'] = df['product_sku'].apply(
             lambda x: '-'.join(x.split('-')[3:]) if len(x.split('-')) > 3 else 'Standard'
         )
         
-        # Group by date and size
         df['year_month'] = pd.to_datetime(df['sales_date']).dt.to_period('M')
         grouped = df.groupby(['year_month', 'size'])['total_quantity'].sum().reset_index()
         
-        # Pivot to get sizes as columns
         pivot = grouped.pivot(index='year_month', columns='size', values='total_quantity').fillna(0)
         
-        # Get unique sizes
         sizes = list(pivot.columns)
         print(f"[Backend] Found {len(sizes)} sizes: {sizes}")
         
-        # Convert to chart format
         chart_data = []
         for date_idx, row in pivot.iterrows():
             month_data = {"month": str(date_idx)}
@@ -418,7 +399,6 @@ async def get_historical_sales(sku: str = Query(...)):
                 month_data[size] = int(row[size])
             chart_data.append(month_data)
         
-        # Convert to table format
         table_data = []
         for date_idx, row in pivot.iterrows():
             row_data = {"date": str(date_idx)}
@@ -468,13 +448,10 @@ async def get_existing_forecasts():
                 "message": "No forecasts available. Please train the model first."
             }
         
-        # Read forecasts from CSV
         df = pd.read_csv(forecast_file)
         
-        # Convert to list of dicts
         forecasts = df.to_dict('records')
         
-        # Convert date columns to strings
         for forecast in forecasts:
             if 'forecast_date' in forecast:
                 forecast['forecast_date'] = str(forecast['forecast_date'])
@@ -502,7 +479,6 @@ async def generate_forecasts(n_forecast: int = Query(default=3, ge=1, le=12)):
     try:
         print(f"[Backend] Generating forecasts for {n_forecast} months")
         
-        # Load training data
         print("[Backend] Loading training data from base_data...")
         query = """
             SELECT 
@@ -525,18 +501,15 @@ async def generate_forecasts(n_forecast: int = Query(default=3, ge=1, le=12)):
         
         print(f"[Backend] Loaded {len(df)} rows from base_data")
         
-        # Train model
         print("[Backend] Training model...")
         df_window_raw, df_window, base_model, X_train, y_train, X_test, y_test, product_sku_last = update_model_and_train(df)
         
-        # Generate forecasts
         print(f"[Backend] Generating {n_forecast} month forecasts...")
         long_forecast, long_forecast_rows = forcast_loop(
             X_train, y_train, df_window_raw, product_sku_last, base_model, 
             n_forecast=n_forecast
         )
         
-        # Convert to serializable format
         forecasts = []
         for forecast in long_forecast_rows:
             forecasts.append({
