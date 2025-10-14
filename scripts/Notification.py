@@ -13,7 +13,7 @@ MAX_BUFFER = 50
 # ================= Get latest stock per product =================
 def get_data(week_date):
     query = f"""
-        SELECT product_name, stock
+        SELECT product_name, stock_level
         FROM stock_data
         WHERE week_date = '{week_date}'
         AND uploaded_at = (
@@ -39,8 +39,8 @@ def generate_stock_report(df_prev, df_curr):
     results = []
     for _, p in merged_df.iterrows():
         name = p['product_name']
-        stock = p['stock_current']
-        last_stock = p.get('stock_previous', stock)
+        stock = p['stock_level_current']
+        last_stock = p.get('stock_level_previous', stock)
 
         weekly_sale = max(last_stock - stock, 1)
         decrease_rate = (last_stock - stock) / last_stock * 100 if last_stock > 0 else 0

@@ -136,11 +136,11 @@ async def get_stock_levels():
             SELECT DISTINCT ON (product_name)
                 product_name,
                 product_sku,
-                stock,
+                stock_level,
                 category,
                 CASE 
-                    WHEN stock = 0 THEN 'Out of Stock'
-                    WHEN stock < minstock THEN 'Low Stock'
+                    WHEN stock_level = 0 THEN 'Out of Stock'
+                    WHEN stock_level < minstock THEN 'Low Stock'
                     ELSE 'In Stock'
                 END as status
             FROM stock_data
@@ -163,7 +163,7 @@ async def get_stock_levels():
                 SELECT 
                     product_name,
                     product_sku,
-                    SUM(total_quantity) as stock,
+                    SUM(total_quantity) as stock_level,
                     category,
                     'In Stock' as status
                 FROM base_data
@@ -246,8 +246,8 @@ async def get_dashboard_analytics():
             SELECT COUNT(*) as low_stock_count
             FROM stock_data
             WHERE week_date = (SELECT MAX(week_date) FROM stock_data)
-            AND stock < minstock
-            AND stock > 0
+            AND stock_level < minstock
+            AND stock_level > 0
         """
         low_stock_result = pd.read_sql(low_stock_query, engine)
         low_stock = int(low_stock_result.iloc[0]['low_stock_count']) if not low_stock_result.empty else 0
@@ -257,7 +257,7 @@ async def get_dashboard_analytics():
             SELECT COUNT(*) as out_of_stock_count
             FROM stock_data
             WHERE week_date = (SELECT MAX(week_date) FROM stock_data)
-            AND stock = 0
+            AND stock_level = 0
         """
         out_of_stock_result = pd.read_sql(out_of_stock_query, engine)
         out_of_stock = int(out_of_stock_result.iloc[0]['out_of_stock_count']) if not out_of_stock_result.empty else 0

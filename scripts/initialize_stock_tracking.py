@@ -23,7 +23,6 @@ def initialize_stock_tracking():
     try:
         print("🔧 Creating stock_data table...")
         
-        # Create the table
         cur.execute("""
             CREATE TABLE IF NOT EXISTS stock_data (
                 id SERIAL PRIMARY KEY,
@@ -31,10 +30,11 @@ def initialize_stock_tracking():
                 product_name VARCHAR(255) NOT NULL,
                 product_sku VARCHAR(100),
                 stock_level INTEGER NOT NULL,
-                min_stock INTEGER DEFAULT 10,
+                minstock INTEGER DEFAULT 10,
                 buffer INTEGER DEFAULT 5,
+                uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(week_date, product_name)
+                UNIQUE(week_date, product_name, uploaded_at)
             );
         """)
         
@@ -49,6 +49,10 @@ def initialize_stock_tracking():
         cur.execute("""
             CREATE INDEX IF NOT EXISTS idx_stock_data_product 
             ON stock_data(product_name);
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_stock_data_uploaded_at 
+            ON stock_data(uploaded_at DESC);
         """)
         
         print("✅ Indexes created successfully")
@@ -83,7 +87,10 @@ def initialize_stock_tracking():
         
         # Insert data with decreasing stock levels over time
         for date_idx, week_date in enumerate(dates):
-            for product_name, sku, base_stock, min_stock, buffer in products:
+            # Use the same uploaded_at for all products in this batch
+            uploaded_at = week_date + timedelta(hours=1)
+            
+            for product_name, sku, base_stock, minstock, buffer in products:
                 # Simulate stock decrease over time
                 # Some products decrease faster than others
                 if product_name in ["Product C", "Product E"]:
@@ -98,10 +105,10 @@ def initialize_stock_tracking():
                 
                 cur.execute("""
                     INSERT INTO stock_data 
-                    (week_date, product_name, product_sku, stock_level, min_stock, buffer)
-                    VALUES (%s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (week_date, product_name) DO NOTHING
-                """, (week_date, product_name, sku, stock_level, min_stock, buffer))
+                    (week_date, product_name, product_sku, stock_level, minstock, buffer, uploaded_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (week_date, product_name, uploaded_at) DO NOTHING
+                """, (week_date, product_name, sku, stock_level, minstock, buffer, uploaded_at))
         
         conn.commit()
         
