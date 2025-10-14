@@ -68,13 +68,26 @@ async def train_model(
         print("[Backend] Processing files with auto_cleaning...")
         auto_cleaning(sales_path, product_path, engine)
         
-        # Train model
-        print("[Backend] Training model...")
-        update_model_and_train()
+        print("[Backend] Loading training data from base_data...")
+        query = """
+            SELECT 
+                product_sku,
+                product_name,
+                sales_date,
+                sales_year,
+                sales_month,
+                total_quantity
+            FROM base_data
+            ORDER BY sales_date ASC
+        """
+        df = pd.read_sql(query, engine)
+        print(f"[Backend] Loaded {len(df)} rows from base_data")
         
-        # Generate forecasts
+        print("[Backend] Training model...")
+        df_window_raw, df_window, base_model, X_train, y_train, X_test, y_test, product_sku_last = update_model_and_train(df)
+        
         print("[Backend] Generating forecasts...")
-        forcast_loop()
+        forcast_loop(X_train, y_train, df_window_raw, product_sku_last, base_model)
         
         # Clean up temp files
         os.remove(sales_path)
@@ -90,6 +103,8 @@ async def train_model(
         
     except Exception as e:
         print(f"[Backend] Error in train_model: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Training failed: {str(e)}")
 
 # ============================================================================
