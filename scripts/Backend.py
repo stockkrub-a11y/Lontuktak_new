@@ -66,7 +66,7 @@ async def train_model(
         
         # Process files with auto_cleaning
         print("[Backend] Processing files with auto_cleaning...")
-        auto_cleaning(sales_path, product_path)
+        auto_cleaning(sales_path, product_path, engine)
         
         # Train model
         print("[Backend] Training model...")
