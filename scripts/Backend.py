@@ -82,22 +82,33 @@ async def train_model(
         """
         df = pd.read_sql(query, engine)
         print(f"[Backend] Loaded {len(df)} rows from base_data")
+        rows_uploaded = len(df)
         
         print("[Backend] Training model...")
         df_window_raw, df_window, base_model, X_train, y_train, X_test, y_test, product_sku_last = update_model_and_train(df)
         
         print("[Backend] Generating forecasts...")
-        forcast_loop(X_train, y_train, df_window_raw, product_sku_last, base_model)
+        long_forecast, long_forecast_rows = forcast_loop(X_train, y_train, df_window_raw, product_sku_last, base_model)
+        forecast_rows = len(long_forecast_rows)
         
         # Clean up temp files
         os.remove(sales_path)
         os.remove(product_path)
         
-        print("[Backend] ✅ Training completed successfully")
+        print(f"[Backend] ✅ Training completed successfully: {rows_uploaded} rows, {forecast_rows} forecasts")
         
         return {
             "success": True,
             "message": "Model trained successfully",
+            "data_cleaning": {
+                "rows_uploaded": rows_uploaded,
+                "status": "success"
+            },
+            "ml_training": {
+                "status": "success",
+                "forecast_rows": forecast_rows,
+                "message": f"Generated {forecast_rows} forecasts"
+            },
             "timestamp": datetime.now().isoformat()
         }
         
@@ -475,6 +486,120 @@ async def get_historical_sales(sku: str = Query(...)):
             "table_data": [],
             "sizes": []
         }
+
+# ============================================================================
+# PREDICT ENDPOINTS
+# ============================================================================
+
+@app.get("/predict/existing")
+async def get_existing_forecasts():
+    """Get existing forecasts from CSV file"""
+    try:
+        print("[Backend] Fetching existing forecasts")
+        
+        forecast_file = "forecast_output.csv"
+        
+        if not os.path.exists(forecast_file):
+            return {
+                "status": "no_forecasts",
+                "forecast_rows": 0,
+                "forecast": [],
+                "message": "No forecasts available. Please train the model first."
+            }
+        
+        # Read forecasts from CSV
+        df = pd.read_csv(forecast_file)
+        
+        # Convert to list of dicts
+        forecasts = df.to_dict('records')
+        
+        # Convert date columns to strings
+        for forecast in forecasts:
+            if 'forecast_date' in forecast:
+                forecast['forecast_date'] = str(forecast['forecast_date'])
+            if 'current_date_col' in forecast:
+                forecast['current_date_col'] = str(forecast['current_date_col'])
+        
+        print(f"[Backend] ✅ Retrieved {len(forecasts)} existing forecasts")
+        
+        return {
+            "status": "success",
+            "forecast_rows": len(forecasts),
+            "forecast": forecasts,
+            "message": f"Retrieved {len(forecasts)} forecasts"
+        }
+        
+    except Exception as e:
+        print(f"[Backend] Error in get_existing_forecasts: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to load forecasts: {str(e)}")
+
+@app.post("/predict")
+async def generate_forecasts(n_forecast: int = Query(default=3, ge=1, le=12)):
+    """Generate new forecasts with specified number of months"""
+    try:
+        print(f"[Backend] Generating forecasts for {n_forecast} months")
+        
+        # Load training data
+        print("[Backend] Loading training data from base_data...")
+        query = """
+            SELECT 
+                product_sku,
+                product_name,
+                sales_date,
+                sales_year,
+                sales_month,
+                total_quantity
+            FROM base_data
+            ORDER BY sales_date ASC
+        """
+        df = pd.read_sql(query, engine)
+        
+        if df.empty:
+            raise HTTPException(
+                status_code=400,
+                detail="No training data available. Please upload sales data first."
+            )
+        
+        print(f"[Backend] Loaded {len(df)} rows from base_data")
+        
+        # Train model
+        print("[Backend] Training model...")
+        df_window_raw, df_window, base_model, X_train, y_train, X_test, y_test, product_sku_last = update_model_and_train(df)
+        
+        # Generate forecasts
+        print(f"[Backend] Generating {n_forecast} month forecasts...")
+        long_forecast, long_forecast_rows = forcast_loop(
+            X_train, y_train, df_window_raw, product_sku_last, base_model, 
+            n_forecast=n_forecast
+        )
+        
+        # Convert to serializable format
+        forecasts = []
+        for forecast in long_forecast_rows:
+            forecasts.append({
+                "product_sku": forecast["product_sku"],
+                "forecast_date": str(forecast["forecast_date"]),
+                "predicted_sales": int(forecast["predicted_sales"]),
+                "current_sales": int(forecast["current_sales"]),
+                "current_date_col": str(forecast["current_date_col"])
+            })
+        
+        print(f"[Backend] ✅ Generated {len(forecasts)} forecasts")
+        
+        return {
+            "status": "success",
+            "forecast_rows": len(forecasts),
+            "n_forecast": n_forecast,
+            "forecast": forecasts
+        }
+        
+    except Exception as e:
+        print(f"[Backend] Error in generate_forecasts: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Forecast generation failed: {str(e)}")
 
 # ============================================================================
 # MAIN
