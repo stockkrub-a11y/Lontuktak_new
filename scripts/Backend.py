@@ -201,18 +201,36 @@ async def upload_stock_notifications(
         if previous_stock.filename.endswith('.csv'):
             df_prev = pd.read_csv(io.BytesIO(prev_content))
         else:
-            df_prev = pd.read_excel(io.BytesIO(prev_content))
+            df_prev = pd.read_excel(io.BytesIO(prev_content),header=1)
         
         # Read current stock file
         curr_content = await current_stock.read()
         if current_stock.filename.endswith('.csv'):
             df_curr = pd.read_csv(io.BytesIO(curr_content))
         else:
-            df_curr = pd.read_excel(io.BytesIO(curr_content))
-        
+            df_curr = pd.read_excel(io.BytesIO(curr_content),header=0)
+        df_curr = df_curr.rename(columns={
+            "ชื่อสินค้า": "product_name",
+            "เลขอ้างอิง SKU (SKU Reference No.)": "product_sku",
+            "รหัสสินค้า": "product_sku",
+            "ปริมาณคงเหลือ (Stock Level)": "stock_level",
+            "จำนวน": "stock_level"
+        }).copy()
+        df_prev = df_prev.rename(columns={
+            "ชื่อสินค้า": "product_name",
+            "เลขอ้างอิง SKU (SKU Reference No.)": "product_sku",
+            "รหัสสินค้า": "product_sku",
+            "ปริมาณคงเหลือ (Stock Level)": "stock_level",
+            "จำนวน": "stock_level"
+        }).copy()
+        # convert stock_level to integer (handle floats/strings; invalid -> 0)
+        df_prev['stock_level'] = pd.to_numeric(df_prev['stock_level'], errors='coerce').fillna(0).astype(int)
+        df_curr['stock_level'] = pd.to_numeric(df_curr['stock_level'], errors='coerce').fillna(0).astype(int)
+
         print(f"[Backend] Previous stock data: {len(df_prev)} rows")
         print(f"[Backend] Current stock data: {len(df_curr)} rows")
-        
+        print(f"[Backend] Previous stock columns: {df_prev.head()}")
+        print(f"[Backend] Current stock columns: {df_curr.head()}")
         # Ensure required columns exist
         required_columns = ['product_name', 'stock_level']
         for col in required_columns:
