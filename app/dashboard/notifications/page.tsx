@@ -48,10 +48,13 @@ export default function NotificationsPage() {
   const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null)
   const [showFilterModal, setShowFilterModal] = useState(false)
   const [selectedStatuses, setSelectedStatuses] = useState<NotificationStatus[]>([])
-  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false)
+  const [isPreviousStockModalOpen, setIsPreviousStockModalOpen] = useState(false)
+  const [isCurrentStockModalOpen, setIsCurrentStockModalOpen] = useState(false)
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [uploadFile, setUploadFile] = useState<File | null>(null)
+  const [previousStockFile, setPreviousStockFile] = useState<File | null>(null)
+  const [currentStockFile, setCurrentStockFile] = useState<File | null>(null)
+  const [isUploading, setIsUploading] = useState(false)
 
   useEffect(() => {
     async function fetchNotifications() {
@@ -177,25 +180,92 @@ export default function NotificationsPage() {
     setSelectedStatuses((prev) => (prev.includes(status) ? prev.filter((s) => s !== status) : [...prev, status]))
   }
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePreviousFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
-      console.log("[v0] File selected:", file.name)
-      setUploadFile(file)
+      console.log("[v0] Previous stock file selected:", file.name)
+      setPreviousStockFile(file)
+    }
+  }
+
+  const handleCurrentFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      console.log("[v0] Current stock file selected:", file.name)
+      setCurrentStockFile(file)
     }
   }
 
   const handleUpload = async () => {
-    if (!uploadFile) {
-      alert("Please select a file to upload")
+    if (!previousStockFile || !currentStockFile) {
+      alert("Please upload both previous and current stock files")
       return
     }
 
-    console.log("[v0] Uploading file:", uploadFile.name)
-    // TODO: Implement actual upload logic when backend endpoint is ready
-    alert("Upload functionality will be implemented when backend endpoint is ready")
-    setIsUploadModalOpen(false)
-    setUploadFile(null)
+    setIsUploading(true)
+    console.log("[v0] Uploading files:", previousStockFile.name, currentStockFile.name)
+
+    try {
+      const formData = new FormData()
+      formData.append("previous_stock", previousStockFile)
+      formData.append("current_stock", currentStockFile)
+
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+      const response = await fetch(`${apiUrl}/notifications/upload`, {
+        method: "POST",
+        body: formData,
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.detail || "Upload failed")
+      }
+
+      const result = await response.json()
+      console.log("[v0] Upload successful:", result)
+      alert("Stock files uploaded successfully! Notifications will be updated.")
+
+      // Reset and close modals
+      setIsPreviousStockModalOpen(false)
+      setIsCurrentStockModalOpen(false)
+      setPreviousStockFile(null)
+      setCurrentStockFile(null)
+
+      // Refresh notifications
+      const data = await getNotifications()
+      if (Array.isArray(data)) {
+        const mapped: Notification[] = data.map((item, index) => {
+          const status: NotificationStatus =
+            item.Status === "Red" ? "critical" : item.Status === "Yellow" ? "warning" : "safe"
+
+          return {
+            id: String(index + 1),
+            status,
+            title: item.Description.includes("out of stock")
+              ? "Nearly Out of Stock!"
+              : item.Description.includes("Decreasing rapidly")
+                ? "Decreasing Rapidly"
+                : "Stock is Enough",
+            product: item.Product,
+            sku: item.Product,
+            estimatedTime: `${item.Weeks_To_Empty} weeks`,
+            recommendUnits: item.Reorder_Qty,
+            currentStock: item.Stock,
+            decreaseRate: `${item["Decrease_Rate(%)"]}%/week`,
+            timeToRunOut: `${Math.round(item.Weeks_To_Empty * 7)} days`,
+            minStock: item.MinStock,
+            buffer: item.Buffer,
+            recommendedRestock: item.Reorder_Qty,
+          }
+        })
+        setNotifications(mapped)
+      }
+    } catch (error) {
+      console.error("[v0] Upload failed:", error)
+      alert(`Upload failed: ${error instanceof Error ? error.message : "Unknown error"}`)
+    } finally {
+      setIsUploading(false)
+    }
   }
 
   return (
@@ -283,11 +353,18 @@ export default function NotificationsPage() {
             </div>
             <div className="flex gap-3">
               <button
-                onClick={() => setIsUploadModalOpen(true)}
+                onClick={() => setIsPreviousStockModalOpen(true)}
                 className="flex items-center gap-2 px-4 py-2 bg-white rounded-lg border border-[#cecabf] hover:bg-[#efece3] transition-colors"
               >
                 <Upload className="w-4 h-4" />
-                <span className="text-sm font-medium">Upload</span>
+                <span className="text-sm font-medium">Upload Previous Stock</span>
+              </button>
+              <button
+                onClick={() => setIsCurrentStockModalOpen(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-white rounded-lg border border-[#cecabf] hover:bg-[#efece3] transition-colors"
+              >
+                <Upload className="w-4 h-4" />
+                <span className="text-sm font-medium">Upload Current Stock</span>
               </button>
               <button
                 onClick={() => setShowFilterModal(true)}
@@ -635,17 +712,14 @@ export default function NotificationsPage() {
         </div>
       )}
 
-      {/* Upload Modal */}
-      {isUploadModalOpen && (
+      {isPreviousStockModalOpen && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg w-full max-w-2xl p-6 relative">
-            {/* Modal Header */}
+          <div className="bg-white rounded-lg w-full max-w-xl p-6 relative">
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-bold text-black">Upload</h3>
+              <h3 className="text-xl font-bold text-black">Upload Previous Stock</h3>
               <button
                 onClick={() => {
-                  setIsUploadModalOpen(false)
-                  setUploadFile(null)
+                  setIsPreviousStockModalOpen(false)
                 }}
                 className="text-[#938d7a] hover:text-black transition-colors"
               >
@@ -653,27 +727,97 @@ export default function NotificationsPage() {
               </button>
             </div>
 
-            {/* Upload Area */}
-            <div className="border-2 border-dashed border-[#cecabf] rounded-lg p-12 mb-6">
-              <div className="flex flex-col items-center justify-center gap-4">
-                <CloudUpload className="w-24 h-24 text-[#cecabf]" />
-                <p className="text-[#938d7a] text-sm">
-                  {uploadFile ? uploadFile.name : "Drag a file here or click Browse"}
-                </p>
+            <div className="mb-6">
+              <div className="border-2 border-dashed border-[#cecabf] rounded-lg p-8">
+                <div className="flex flex-col items-center justify-center gap-3">
+                  <CloudUpload className="w-16 h-16 text-[#cecabf]" />
+                  <p className="text-[#938d7a] text-sm">
+                    {previousStockFile ? previousStockFile.name : "Upload previous stock data"}
+                  </p>
+                  <label className="px-4 py-2 bg-white border border-[#cecabf] rounded-lg text-sm font-medium hover:bg-[#f8f5ee] transition-colors cursor-pointer">
+                    Browse
+                    <input
+                      type="file"
+                      accept=".csv,.xlsx,.xls"
+                      onChange={handlePreviousFileChange}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
               </div>
             </div>
 
-            {/* Modal Actions */}
             <div className="flex gap-4">
-              <label className="flex-1 px-6 py-3 bg-white border border-[#cecabf] rounded-lg text-black font-medium hover:bg-[#f8f5ee] transition-colors text-center cursor-pointer">
-                Browse
-                <input type="file" accept=".csv,.xlsx,.xls" onChange={handleFileChange} className="hidden" />
-              </label>
+              <button
+                onClick={() => {
+                  setIsPreviousStockModalOpen(false)
+                }}
+                className="flex-1 px-6 py-3 bg-white border border-[#cecabf] rounded-lg text-black font-medium hover:bg-[#f8f5ee] transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  if (previousStockFile) {
+                    setIsPreviousStockModalOpen(false)
+                    alert("Previous stock file uploaded. Please upload current stock file.")
+                  }
+                }}
+                disabled={!previousStockFile}
+                className="flex-1 px-6 py-3 bg-[#cecabf] rounded-lg text-black font-medium hover:bg-[#c5c5c5] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isCurrentStockModalOpen && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg w-full max-w-xl p-6 relative">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-bold text-black">Upload Current Stock</h3>
+              <button
+                onClick={() => {
+                  setIsCurrentStockModalOpen(false)
+                }}
+                className="text-[#938d7a] hover:text-black transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="mb-6">
+              <div className="border-2 border-dashed border-[#cecabf] rounded-lg p-8">
+                <div className="flex flex-col items-center justify-center gap-3">
+                  <CloudUpload className="w-16 h-16 text-[#cecabf]" />
+                  <p className="text-[#938d7a] text-sm">
+                    {currentStockFile ? currentStockFile.name : "Upload current stock data"}
+                  </p>
+                  <label className="px-4 py-2 bg-white border border-[#cecabf] rounded-lg text-sm font-medium hover:bg-[#f8f5ee] transition-colors cursor-pointer">
+                    Browse
+                    <input type="file" accept=".csv,.xlsx,.xls" onChange={handleCurrentFileChange} className="hidden" />
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-4">
+              <button
+                onClick={() => {
+                  setIsCurrentStockModalOpen(false)
+                }}
+                className="flex-1 px-6 py-3 bg-white border border-[#cecabf] rounded-lg text-black font-medium hover:bg-[#f8f5ee] transition-colors"
+              >
+                Cancel
+              </button>
               <button
                 onClick={handleUpload}
-                className="flex-1 px-6 py-3 bg-[#cecabf] rounded-lg text-black font-medium hover:bg-[#c5c5c5] transition-colors"
+                disabled={!previousStockFile || !currentStockFile || isUploading}
+                className="flex-1 px-6 py-3 bg-[#cecabf] rounded-lg text-black font-medium hover:bg-[#c5c5c5] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Upload
+                {isUploading ? "Processing..." : "Upload & Generate Report"}
               </button>
             </div>
           </div>

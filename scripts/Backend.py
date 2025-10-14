@@ -13,7 +13,7 @@ from sqlalchemy import text
 from Auto_cleaning import auto_cleaning
 from DB_server import engine
 from Predict import update_model_and_train, forcast_loop, Evaluate
-from Notification import get_notifications as get_notification_data
+from Notification import get_notifications as get_notification_data, generate_stock_report
 from stock_sync import sync_products_to_stock_data
 
 # Initialize FastAPI app
@@ -182,6 +182,85 @@ async def get_stock_levels():
 # NOTIFICATIONS ENDPOINT
 # ============================================================================
 
+@app.post("/notifications/upload")
+async def upload_stock_notifications(
+    previous_stock: UploadFile = File(...),
+    current_stock: UploadFile = File(...)
+):
+    """Upload previous and current stock files to generate notifications"""
+    try:
+        print(f"[Backend] Received notification upload request")
+        print(f"[Backend] Previous stock file: {previous_stock.filename}")
+        print(f"[Backend] Current stock file: {current_stock.filename}")
+        
+        # Read the uploaded files into DataFrames
+        import io
+        
+        # Read previous stock file
+        prev_content = await previous_stock.read()
+        if previous_stock.filename.endswith('.csv'):
+            df_prev = pd.read_csv(io.BytesIO(prev_content))
+        else:
+            df_prev = pd.read_excel(io.BytesIO(prev_content))
+        
+        # Read current stock file
+        curr_content = await current_stock.read()
+        if current_stock.filename.endswith('.csv'):
+            df_curr = pd.read_csv(io.BytesIO(curr_content))
+        else:
+            df_curr = pd.read_excel(io.BytesIO(curr_content))
+        
+        print(f"[Backend] Previous stock data: {len(df_prev)} rows")
+        print(f"[Backend] Current stock data: {len(df_curr)} rows")
+        
+        # Ensure required columns exist
+        required_columns = ['product_name', 'stock_level']
+        for col in required_columns:
+            if col not in df_prev.columns:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Previous stock file missing required column: {col}"
+                )
+            if col not in df_curr.columns:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Current stock file missing required column: {col}"
+                )
+        
+        # Generate the stock report
+        print("[Backend] Generating stock report...")
+        report_df = generate_stock_report(df_prev, df_curr)
+        print(f"[Backend] Generated report with {len(report_df)} rows")
+        
+        # Store results in database
+        print("[Backend] Storing results in stock_notifications table...")
+        
+        # Add timestamp
+        report_df['created_at'] = datetime.now()
+        
+        # Save to database
+        report_df.to_sql(
+            'stock_notifications',
+            engine,
+            if_exists='replace',  # Replace existing data
+            index=False
+        )
+        
+        print(f"[Backend] ✅ Successfully stored {len(report_df)} notifications in database")
+        
+        return {
+            "success": True,
+            "message": "Stock notifications generated successfully",
+            "notifications_count": len(report_df),
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        print(f"[Backend] Error in upload_stock_notifications: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+
 @app.get("/api/notifications")
 async def get_notifications():
     """Get inventory notifications"""
@@ -192,6 +271,36 @@ async def get_notifications():
             print("[Backend] ❌ Database engine not available")
             return []
         
+        try:
+            print("[Backend] Checking stock_notifications table...")
+            query = """
+                SELECT 
+                    "Product",
+                    "Stock",
+                    "Last_Stock",
+                    "Decrease_Rate(%)",
+                    "Weeks_To_Empty",
+                    "MinStock",
+                    "Buffer",
+                    "Reorder_Qty",
+                    "Status",
+                    "Description",
+                    created_at
+                FROM stock_notifications
+                ORDER BY created_at DESC
+            """
+            df = pd.read_sql(query, engine)
+            
+            if not df.empty:
+                print(f"[Backend] ✅ Retrieved {len(df)} notifications from database")
+                notifications = df.to_dict('records')
+                return notifications
+            else:
+                print("[Backend] No notifications in database, falling back to get_notification_data()")
+        except Exception as db_error:
+            print(f"[Backend] Database query failed: {str(db_error)}, falling back to get_notification_data()")
+        
+        # Fallback to original method
         print("[Backend] Calling get_notification_data()...")
         notifications = get_notification_data()
         
