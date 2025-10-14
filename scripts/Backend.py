@@ -13,6 +13,7 @@ from sqlalchemy import text
 from Auto_cleaning import auto_cleaning
 from DB_server import engine
 from Predict import update_model_and_train, forcast_loop, Evaluate
+from Notification import get_notifications as get_notification_data
 
 # Initialize FastAPI app
 app = FastAPI()
@@ -185,80 +186,24 @@ async def get_notifications():
         print("[Backend] Fetching notifications")
         
         if not engine:
-            return {"success": False, "data": []}
+            return []
         
-        # Get low stock items
-        low_stock_query = """
-            SELECT 
-                product_name,
-                product_sku,
-                stock,
-                minstock,
-                'low_stock' as type,
-                'warning' as severity
-            FROM stock_data
-            WHERE week_date = (SELECT MAX(week_date) FROM stock_data)
-            AND stock < minstock
-            AND stock > 0
-        """
+        # Get notifications from Notification.py
+        notifications = get_notification_data()
         
-        # Get out of stock items
-        out_of_stock_query = """
-            SELECT 
-                product_name,
-                product_sku,
-                stock,
-                minstock,
-                'out_of_stock' as type,
-                'critical' as severity
-            FROM stock_data
-            WHERE week_date = (SELECT MAX(week_date) FROM stock_data)
-            AND stock = 0
-        """
+        # Handle error case
+        if isinstance(notifications, dict) and "error" in notifications:
+            print(f"[Backend] Notification error: {notifications['error']}")
+            return []
         
-        low_stock_df = pd.read_sql(low_stock_query, engine)
-        out_of_stock_df = pd.read_sql(out_of_stock_query, engine)
-        
-        notifications = []
-        
-        # Add low stock notifications
-        for _, row in low_stock_df.iterrows():
-            notifications.append({
-                "id": f"low_{row['product_sku']}",
-                "type": "low_stock",
-                "message": f"{row['product_name']} is running low on stock",
-                "product_name": row['product_name'],
-                "current_stock": int(row['stock']),
-                "min_stock": int(row['minstock']),
-                "severity": "warning",
-                "created_at": datetime.now().isoformat(),
-                "is_read": False
-            })
-        
-        # Add out of stock notifications
-        for _, row in out_of_stock_df.iterrows():
-            notifications.append({
-                "id": f"out_{row['product_sku']}",
-                "type": "out_of_stock",
-                "message": f"{row['product_name']} is out of stock",
-                "product_name": row['product_name'],
-                "current_stock": 0,
-                "min_stock": int(row['minstock']),
-                "severity": "critical",
-                "created_at": datetime.now().isoformat(),
-                "is_read": False
-            })
-        
-        return {
-            "success": True,
-            "data": notifications,
-            "total": len(notifications),
-            "unread": len(notifications)
-        }
+        print(f"[Backend] ✅ Retrieved {len(notifications)} notifications")
+        return notifications
         
     except Exception as e:
         print(f"[Backend] Error in get_notifications: {str(e)}")
-        return {"success": False, "data": [], "error": str(e)}
+        import traceback
+        traceback.print_exc()
+        return []
 
 # ============================================================================
 # ANALYSIS ENDPOINTS

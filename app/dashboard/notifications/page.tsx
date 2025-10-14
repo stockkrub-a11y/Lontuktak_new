@@ -64,9 +64,9 @@ export default function NotificationsPage() {
           return {
             id: String(index + 1),
             status,
-            title: item.Description.includes("หมดสต๊อก")
+            title: item.Description.includes("out of stock")
               ? "Nearly Out of Stock!"
-              : item.Description.includes("ลดลงเร็ว")
+              : item.Description.includes("Decreasing rapidly")
                 ? "Decreasing Rapidly"
                 : "Stock is Enough",
             product: item.Product,

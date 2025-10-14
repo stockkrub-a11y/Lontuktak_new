@@ -141,7 +141,7 @@ export async function getNotifications() {
     >("/api/notifications")
   } catch (error) {
     console.error("[v0] Failed to fetch notifications:", error)
-    // Return mock data if backend is not available
+    // Return empty array if backend is not available
     return []
   }
 }
