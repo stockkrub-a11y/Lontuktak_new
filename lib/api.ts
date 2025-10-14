@@ -187,21 +187,47 @@ export async function getDashboardAnalytics() {
   }
 }
 
-export async function getStockLevels() {
+export async function getStockLevels(params?: {
+  search?: string
+  category?: string
+  flag?: string
+  sort_by?: string
+}) {
   try {
+    const queryParams = new URLSearchParams()
+    if (params?.search) queryParams.append("search", params.search)
+    if (params?.category) queryParams.append("category", params.category)
+    if (params?.flag) queryParams.append("flag", params.flag)
+    if (params?.sort_by) queryParams.append("sort_by", params.sort_by)
+
+    const url = `/stock/levels${queryParams.toString() ? `?${queryParams}` : ""}`
+
     return await apiFetch<{
       success: boolean
       data: Array<{
         product_name: string
         product_sku: string
-        stock: number
+        stock_level: number
         category: string
-        status: string
+        flag: string
+        unchanged_counter: number
       }>
-    }>("/stock/levels")
+      total: number
+    }>(url)
   } catch (error) {
     console.error("[v0] Failed to fetch stock levels:", error)
-    // Return empty data if backend is not available
+    return { success: false, data: [], total: 0 }
+  }
+}
+
+export async function getStockCategories() {
+  try {
+    return await apiFetch<{
+      success: boolean
+      data: string[]
+    }>("/stock/categories")
+  } catch (error) {
+    console.error("[v0] Failed to fetch stock categories:", error)
     return { success: false, data: [] }
   }
 }

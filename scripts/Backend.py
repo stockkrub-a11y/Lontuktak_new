@@ -130,10 +130,15 @@ async def train_model(
 # ============================================================================
 
 @app.get("/stock/levels")
-async def get_stock_levels():
-    """Get current stock levels from base_stock table"""
+async def get_stock_levels(
+    search: str = Query(""),
+    category: str = Query(""),
+    flag: str = Query(""),
+    sort_by: str = Query("name")
+):
+    """Get current stock levels from base_stock table with filtering and sorting"""
     try:
-        print("[Backend] Fetching stock levels from base_stock")
+        print(f"[Backend] Fetching stock levels - search: '{search}', category: '{category}', flag: '{flag}', sort: '{sort_by}'")
         
         if not engine:
             return {"success": False, "data": [], "message": "Database not configured"}
@@ -144,17 +149,41 @@ async def get_stock_levels():
                 product_sku,
                 stock_level,
                 "หมวดหมู่" as category,
-                CASE 
-                    WHEN stock_level = 0 THEN 'Out of Stock'
-                    WHEN stock_level < 50 THEN 'Low Stock'
-                    ELSE 'In Stock'
-                END as status
+                flag,
+                unchanged_counter
             FROM base_stock
-            WHERE "หมวดหมู่" IS NOT NULL
-            ORDER BY product_name
+            WHERE 1=1
         """
         
-        df = pd.read_sql(query, engine)
+        params = {}
+        
+        # Add search filter
+        if search:
+            query += " AND (product_name ILIKE :search OR product_sku ILIKE :search)"
+            params["search"] = f"%{search}%"
+        
+        # Add category filter
+        if category:
+            query += " AND \"หมวดหมู่\" = :category"
+            params["category"] = category
+        
+        # Add flag filter
+        if flag:
+            query += " AND flag = :flag"
+            params["flag"] = flag
+        
+        # Add sorting
+        if sort_by == "quantity_asc":
+            query += " ORDER BY stock_level ASC"
+        elif sort_by == "quantity_desc":
+            query += " ORDER BY stock_level DESC"
+        else:
+            query += " ORDER BY product_name ASC"
+        
+        # Execute query
+        with engine.connect() as conn:
+            result = conn.execute(text(query), params)
+            df = pd.DataFrame(result.fetchall(), columns=result.keys())
         
         print(f"[Backend] ✅ Retrieved {len(df)} stock items from base_stock")
         
@@ -166,7 +195,39 @@ async def get_stock_levels():
         
     except Exception as e:
         print(f"[Backend] Error in get_stock_levels: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return {"success": False, "data": [], "error": str(e)}
+
+@app.get("/stock/categories")
+async def get_stock_categories():
+    """Get unique categories from base_stock"""
+    try:
+        print("[Backend] Fetching unique categories")
+        
+        if not engine:
+            return {"success": False, "data": []}
+        
+        query = """
+            SELECT DISTINCT "หมวดหมู่" as category
+            FROM base_stock
+            WHERE "หมวดหมู่" IS NOT NULL
+            ORDER BY "หมวดหมู่"
+        """
+        
+        df = pd.read_sql(query, engine)
+        categories = df['category'].tolist()
+        
+        print(f"[Backend] ✅ Found {len(categories)} categories")
+        
+        return {
+            "success": True,
+            "data": categories
+        }
+        
+    except Exception as e:
+        print(f"[Backend] Error in get_stock_categories: {str(e)}")
+        return {"success": False, "data": []}
 
 @app.get("/notifications/check_base_stock")
 async def check_base_stock():
@@ -203,7 +264,7 @@ async def upload_stock_notifications(
     previous_stock: Optional[UploadFile] = File(None),
     current_stock: UploadFile = File(...)
 ):
-    """Upload stock files to generate notifications with base_stock logic"""
+    """Upload stock files to generate notifications with base_stock logic and flag tracking"""
     try:
         print(f"[Backend] Received notification upload request")
         print(f"[Backend] Current stock file: {current_stock.filename}")
@@ -225,7 +286,8 @@ async def upload_stock_notifications(
             "เลขอ้างอิง SKU (SKU Reference No.)": "product_sku",
             "รหัสสินค้า": "product_sku",
             "ปริมาณคงเหลือ (Stock Level)": "stock_level",
-            "จำนวน": "stock_level"
+            "จำนวน": "stock_level",
+            "หมวดหมู่": "หมวดหมู่"
         }).copy()
         
         # Convert stock_level to integer
@@ -247,7 +309,16 @@ async def upload_stock_notifications(
         if base_stock_exists:
             # Pull df_prev from base_stock
             print("[Backend] Pulling df_prev from base_stock...")
-            query = "SELECT product_name, product_sku, stock_level FROM base_stock"
+            query = """
+                SELECT 
+                    product_name, 
+                    product_sku, 
+                    stock_level, 
+                    "หมวดหมู่",
+                    flag,
+                    unchanged_counter
+                FROM base_stock
+            """
             df_prev = pd.read_sql(query, engine)
             print(f"[Backend] Loaded {len(df_prev)} rows from base_stock")
         else:
@@ -270,10 +341,14 @@ async def upload_stock_notifications(
                 "เลขอ้างอิง SKU (SKU Reference No.)": "product_sku",
                 "รหัสสินค้า": "product_sku",
                 "ปริมาณคงเหลือ (Stock Level)": "stock_level",
-                "จำนวน": "stock_level"
+                "จำนวน": "stock_level",
+                "หมวดหมู่": "หมวดหมู่"
             }).copy()
             
             df_prev['stock_level'] = pd.to_numeric(df_prev['stock_level'], errors='coerce').fillna(0).astype(int)
+            # Initialize flag and counter for first time
+            df_prev['flag'] = 'stage'
+            df_prev['unchanged_counter'] = 0
             print(f"[Backend] Previous stock data: {len(df_prev)} rows")
         
         # Ensure required columns exist
@@ -289,6 +364,52 @@ async def upload_stock_notifications(
                     status_code=400,
                     detail=f"Current stock data missing required column: {col}"
                 )
+        
+        print("[Backend] Calculating flags based on stock changes...")
+        
+        # Merge prev and curr on product_name to compare
+        merged = df_curr.merge(
+            df_prev[['product_name', 'stock_level', 'flag', 'unchanged_counter']], 
+            on='product_name', 
+            how='left',
+            suffixes=('_curr', '_prev')
+        )
+        
+        # Initialize flag and counter for new products
+        merged['flag'] = merged['flag'].fillna('stage')
+        merged['unchanged_counter'] = merged['unchanged_counter'].fillna(0).astype(int)
+        merged['stock_level_prev'] = merged['stock_level_prev'].fillna(0).astype(int)
+        
+        # Apply flag logic
+        def calculate_flag(row):
+            prev_stock = row['stock_level_prev']
+            curr_stock = row['stock_level_curr']
+            counter = row['unchanged_counter']
+            
+            if prev_stock == curr_stock:
+                # Stock unchanged
+                counter += 1
+                if counter >= 4:
+                    return 'inactive', counter
+                else:
+                    return row['flag'], counter
+            elif prev_stock < curr_stock:
+                # Stock increased
+                return 'just added stock', 0
+            else:
+                # Stock decreased
+                return 'active', 0
+        
+        merged[['flag', 'unchanged_counter']] = merged.apply(
+            lambda row: pd.Series(calculate_flag(row)), 
+            axis=1
+        )
+        
+        # Prepare df_curr with updated flags
+        df_curr['flag'] = merged['flag']
+        df_curr['unchanged_counter'] = merged['unchanged_counter']
+        
+        print(f"[Backend] Flag distribution: {df_curr['flag'].value_counts().to_dict()}")
         
         # Generate the stock report
         print("[Backend] Generating stock report...")
@@ -323,6 +444,7 @@ async def upload_stock_notifications(
             "message": "Stock notifications generated successfully",
             "notifications_count": len(report_df),
             "base_stock_updated": True,
+            "flag_distribution": df_curr['flag'].value_counts().to_dict(),
             "timestamp": datetime.now().isoformat()
         }
         

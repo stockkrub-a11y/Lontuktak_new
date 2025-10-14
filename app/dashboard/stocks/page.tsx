@@ -19,8 +19,9 @@ import {
   Wifi,
   WifiOff,
   AlertCircle,
+  ChevronDown,
 } from "lucide-react"
-import { getStockLevels, trainModel } from "@/lib/api"
+import { trainModel } from "@/lib/api"
 
 export default function StocksPage() {
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false)
@@ -31,9 +32,8 @@ export default function StocksPage() {
       name: string
       quantity: number
       category: string
-      status: string
-      statusColor: string
-      dotColor: string
+      flag: string
+      flagColor: string
     }>
   >([])
   const [isLoading, setIsLoading] = useState(true)
@@ -43,36 +43,91 @@ export default function StocksPage() {
   const [backendConnected, setBackendConnected] = useState(true)
   const [showOfflineBanner, setShowOfflineBanner] = useState(false)
 
-  useEffect(() => {
-    async function fetchStocks() {
-      try {
-        console.log("[v0] Fetching stock levels...")
-        const response = await getStockLevels()
-        if (response.success) {
-          const mapped = response.data.map((item, index) => ({
-            id: index + 1,
-            name: item.product_name,
-            quantity: item.stock,
-            category: item.category || "Uncategorized",
-            status: item.status || (item.stock === 0 ? "Out of Stock" : item.stock < 50 ? "Low Stock" : "In Stock"),
-            statusColor: item.stock === 0 ? "red" : item.stock < 50 ? "orange" : "green",
-            dotColor: item.stock === 0 ? "#ea5457" : item.stock < 50 ? "#eaac54" : "#00a63e",
-          }))
-          setStockItems(mapped)
-          setBackendConnected(true)
-          setShowOfflineBanner(false)
-        }
-      } catch (error) {
-        console.error("[v0] Failed to fetch stock levels:", error)
-        setBackendConnected(false)
-        setShowOfflineBanner(true)
-      } finally {
-        setIsLoading(false)
-      }
-    }
+  const [searchQuery, setSearchQuery] = useState("")
+  const [selectedCategory, setSelectedCategory] = useState("")
+  const [selectedFlag, setSelectedFlag] = useState("")
+  const [sortBy, setSortBy] = useState("name")
+  const [showFilterMenu, setShowFilterMenu] = useState(false)
+  const [categories, setCategories] = useState<string[]>([])
 
+  useEffect(() => {
     fetchStocks()
-  }, [])
+    fetchCategories()
+  }, [searchQuery, selectedCategory, selectedFlag, sortBy])
+
+  async function fetchStocks() {
+    try {
+      console.log("[v0] Fetching stock levels...")
+      const params = new URLSearchParams()
+      if (searchQuery) params.append("search", searchQuery)
+      if (selectedCategory) params.append("category", selectedCategory)
+      if (selectedFlag) params.append("flag", selectedFlag)
+      if (sortBy) params.append("sort_by", sortBy)
+
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/stock/levels?${params}`,
+      )
+      const data = await response.json()
+
+      if (data.success) {
+        const mapped = data.data.map((item: any, index: number) => ({
+          id: index + 1,
+          name: item.product_name,
+          quantity: item.stock_level,
+          category: item.category || "Uncategorized",
+          flag: item.flag || "stage",
+          flagColor: getFlagColor(item.flag || "stage"),
+        }))
+        setStockItems(mapped)
+        setBackendConnected(true)
+        setShowOfflineBanner(false)
+      }
+    } catch (error) {
+      console.error("[v0] Failed to fetch stock levels:", error)
+      setBackendConnected(false)
+      setShowOfflineBanner(true)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  async function fetchCategories() {
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/stock/categories`)
+      const data = await response.json()
+      if (data.success) {
+        setCategories(data.data)
+      }
+    } catch (error) {
+      console.error("[v0] Failed to fetch categories:", error)
+    }
+  }
+
+  function getFlagColor(flag: string): string {
+    switch (flag) {
+      case "active":
+        return "#00a63e" // green
+      case "inactive":
+        return "#938d7a" // gray
+      case "just added stock":
+        return "#4a90e2" // blue
+      default:
+        return "#cecabf" // default
+    }
+  }
+
+  function getFlagText(flag: string): string {
+    switch (flag) {
+      case "active":
+        return "Active"
+      case "inactive":
+        return "Inactive"
+      case "just added stock":
+        return "Just Added"
+      default:
+        return "Stage"
+    }
+  }
 
   const openUploadModal = (type: "product" | "sale") => {
     setUploadType(type)
@@ -114,7 +169,6 @@ export default function StocksPage() {
 
       const result = await trainModel(salesFile, productFile)
 
-      // Check if ML training was successful
       if (result.ml_training?.status === "completed") {
         alert(
           `Success! ${result.data_cleaning.rows_uploaded} rows uploaded and ${result.ml_training.forecast_rows} forecasts generated. Redirecting to Predict page...`,
@@ -122,7 +176,6 @@ export default function StocksPage() {
         setIsUploadModalOpen(false)
         setSalesFile(null)
         setProductFile(null)
-        // Navigate to predict page to show forecasts
         window.location.href = "/dashboard/predict"
       } else if (result.ml_training?.status === "failed") {
         alert(
@@ -165,6 +218,8 @@ export default function StocksPage() {
               <input
                 type="text"
                 placeholder="Search for stocks & more"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 bg-[#f8f5ee] rounded-lg border-none outline-none text-sm text-black placeholder:text-[#938d7a] focus:ring-2 focus:ring-[#938d7a]/20"
               />
             </div>
@@ -288,7 +343,6 @@ export default function StocksPage() {
             </div>
           </div>
 
-          {/* Search & Filters */}
           <div className="bg-white rounded-lg p-6 border border-[#cecabf]/30 mb-6">
             <h3 className="text-sm font-medium text-black mb-4">Search & Filters</h3>
             <div className="flex gap-4">
@@ -297,17 +351,82 @@ export default function StocksPage() {
                 <input
                   type="text"
                   placeholder="Search products..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full pl-10 pr-4 py-2 bg-[#f8f5ee] rounded-lg border-none outline-none text-sm text-black placeholder:text-[#938d7a]"
                 />
               </div>
-              <button className="flex items-center gap-2 px-4 py-2 bg-[#efece3] rounded-lg hover:bg-[#e5e2d8] transition-colors">
-                <Filter className="w-4 h-4 text-black" />
-                <span className="text-sm font-medium text-black">All Products</span>
-              </button>
+              <div className="relative">
+                <button
+                  onClick={() => setShowFilterMenu(!showFilterMenu)}
+                  className="flex items-center gap-2 px-4 py-2 bg-[#efece3] rounded-lg hover:bg-[#e5e2d8] transition-colors"
+                >
+                  <Filter className="w-4 h-4 text-black" />
+                  <span className="text-sm font-medium text-black">Filter</span>
+                  <ChevronDown className="w-4 h-4 text-black" />
+                </button>
+
+                {showFilterMenu && (
+                  <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-[#cecabf]/30 p-4 z-10">
+                    <div className="mb-4">
+                      <label className="text-xs font-medium text-[#938d7a] mb-2 block">Category</label>
+                      <select
+                        value={selectedCategory}
+                        onChange={(e) => setSelectedCategory(e.target.value)}
+                        className="w-full px-3 py-2 bg-[#f8f5ee] rounded-lg border-none outline-none text-sm text-black"
+                      >
+                        <option value="">All Categories</option>
+                        {categories.map((cat) => (
+                          <option key={cat} value={cat}>
+                            {cat}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="mb-4">
+                      <label className="text-xs font-medium text-[#938d7a] mb-2 block">Status</label>
+                      <select
+                        value={selectedFlag}
+                        onChange={(e) => setSelectedFlag(e.target.value)}
+                        className="w-full px-3 py-2 bg-[#f8f5ee] rounded-lg border-none outline-none text-sm text-black"
+                      >
+                        <option value="">All Status</option>
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                        <option value="just added stock">Just Added</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-medium text-[#938d7a] mb-2 block">Sort By</label>
+                      <select
+                        value={sortBy}
+                        onChange={(e) => setSortBy(e.target.value)}
+                        className="w-full px-3 py-2 bg-[#f8f5ee] rounded-lg border-none outline-none text-sm text-black"
+                      >
+                        <option value="name">Name (A-Z)</option>
+                        <option value="quantity_asc">Quantity (Low to High)</option>
+                        <option value="quantity_desc">Quantity (High to Low)</option>
+                      </select>
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        setSelectedCategory("")
+                        setSelectedFlag("")
+                        setSortBy("name")
+                      }}
+                      className="w-full mt-4 px-4 py-2 bg-[#cecabf] rounded-lg text-black text-sm font-medium hover:bg-[#c5c5c5] transition-colors"
+                    >
+                      Clear Filters
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
-          {/* Stock Items List */}
           <div className="bg-white rounded-lg p-6 border border-[#cecabf]/30">
             <h3 className="text-sm font-medium text-black mb-4">
               Stock Items ( {isLoading ? "..." : stockItems.length} )
@@ -332,7 +451,7 @@ export default function StocksPage() {
                     className="flex items-center justify-between p-4 bg-[#f8f5ee] rounded-lg border border-[#cecabf]/20"
                   >
                     <div className="flex items-center gap-4">
-                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.dotColor }} />
+                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.flagColor }} />
                       <div>
                         <h4 className="font-medium text-black">{item.name}</h4>
                         <p className="text-sm text-[#938d7a]">Quantity: {item.quantity}</p>
@@ -343,15 +462,10 @@ export default function StocksPage() {
                         {item.category}
                       </span>
                       <span
-                        className={`px-3 py-1 rounded-full text-xs text-white ${
-                          item.statusColor === "green"
-                            ? "bg-[#00a63e]"
-                            : item.statusColor === "orange"
-                              ? "bg-[#eaac54]"
-                              : "bg-[#ea5457]"
-                        }`}
+                        className="px-3 py-1 rounded-full text-xs text-white"
+                        style={{ backgroundColor: item.flagColor }}
                       >
-                        {item.status}
+                        {getFlagText(item.flag)}
                       </span>
                     </div>
                   </div>
@@ -365,7 +479,6 @@ export default function StocksPage() {
       {isUploadModalOpen && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg w-full max-w-2xl p-6 relative">
-            {/* Modal Header */}
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-xl font-bold text-black">
                 Upload {uploadType === "sale" ? "Sales" : "Product"} File
@@ -404,7 +517,6 @@ export default function StocksPage() {
               </p>
             </div>
 
-            {/* Upload Area */}
             <div className="border-2 border-dashed border-[#cecabf] rounded-lg p-12 mb-6">
               <div className="flex flex-col items-center justify-center gap-4">
                 <CloudUpload className="w-24 h-24 text-[#cecabf]" />
@@ -414,7 +526,6 @@ export default function StocksPage() {
               </div>
             </div>
 
-            {/* Modal Actions */}
             <div className="flex gap-4">
               <label className="flex-1 px-6 py-3 bg-white border border-[#cecabf] rounded-lg text-black font-medium hover:bg-[#f8f5ee] transition-colors text-center cursor-pointer">
                 Browse
