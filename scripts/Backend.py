@@ -14,6 +14,7 @@ from Auto_cleaning import auto_cleaning
 from DB_server import engine
 from Predict import update_model_and_train, forcast_loop, Evaluate
 from Notification import get_notifications as get_notification_data
+from stock_sync import sync_products_to_stock_data
 
 # Initialize FastAPI app
 app = FastAPI()
@@ -69,6 +70,10 @@ async def train_model(
         print("[Backend] Processing files with auto_cleaning...")
         auto_cleaning(sales_path, product_path, engine)
         
+        print("[Backend] Syncing products to stock_data table...")
+        sync_result = sync_products_to_stock_data()
+        print(f"[Backend] Stock sync result: {sync_result}")
+        
         print("[Backend] Loading training data from base_data...")
         query = """
             SELECT 
@@ -110,6 +115,7 @@ async def train_model(
                 "forecast_rows": forecast_rows,
                 "message": f"Generated {forecast_rows} forecasts"
             },
+            "stock_sync": sync_result,
             "timestamp": datetime.now().isoformat()
         }
         
