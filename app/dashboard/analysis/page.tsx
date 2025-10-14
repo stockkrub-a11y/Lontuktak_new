@@ -109,7 +109,7 @@ export default function AnalysisPage() {
     try {
       const data = await getAnalysisBaseSKUs(searchTerm)
 
-      if (data.success && data.base_skus.length > 0) {
+      if (data && data.success && data.base_skus.length > 0) {
         setSkuSuggestions(data.base_skus)
         setShowSkuDropdown(true)
       } else {
