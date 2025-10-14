@@ -56,7 +56,18 @@ export default function NotificationsPage() {
   useEffect(() => {
     async function fetchNotifications() {
       try {
+        console.log("[v0] Fetching notifications...")
         const data = await getNotifications()
+        console.log("[v0] Received data:", data)
+        console.log("[v0] Data type:", typeof data)
+        console.log("[v0] Is array:", Array.isArray(data))
+
+        if (!Array.isArray(data)) {
+          console.error("[v0] Data is not an array:", data)
+          setNotifications([])
+          return
+        }
+
         const mapped: Notification[] = data.map((item, index) => {
           const status: NotificationStatus =
             item.Status === "Red" ? "critical" : item.Status === "Yellow" ? "warning" : "safe"

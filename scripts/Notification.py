@@ -83,25 +83,51 @@ def get_notifications():
     """
     Returns notification list (summary view).
     """
-    week_dates_query = """
-        SELECT DISTINCT week_date
-        FROM stock_data
-        ORDER BY week_date DESC
-        LIMIT 2
-    """
-    week_dates = pd.read_sql(week_dates_query, engine)["week_date"].tolist()
-    if len(week_dates) < 2:
-        return {"error": "Not enough data"}
+    print("[Notification] get_notifications() called")
+    
+    try:
+        week_dates_query = """
+            SELECT DISTINCT week_date
+            FROM stock_data
+            ORDER BY week_date DESC
+            LIMIT 2
+        """
+        print("[Notification] Querying for week dates...")
+        week_dates = pd.read_sql(week_dates_query, engine)["week_date"].tolist()
+        print(f"[Notification] Found {len(week_dates)} week dates: {week_dates}")
+        
+        if len(week_dates) < 2:
+            print("[Notification] ⚠️ Not enough data - need at least 2 week dates")
+            return {"error": "Not enough data"}
 
-    week_date_curr, week_date_prev = week_dates[0], week_dates[1]
-    df_prev = get_data(week_date_prev)
-    df_curr = get_data(week_date_curr)
+        week_date_curr, week_date_prev = week_dates[0], week_dates[1]
+        print(f"[Notification] Current week: {week_date_curr}, Previous week: {week_date_prev}")
+        
+        print("[Notification] Fetching previous week data...")
+        df_prev = get_data(week_date_prev)
+        print(f"[Notification] Previous week data: {len(df_prev)} rows")
+        
+        print("[Notification] Fetching current week data...")
+        df_curr = get_data(week_date_curr)
+        print(f"[Notification] Current week data: {len(df_curr)} rows")
 
-    if df_prev.empty or df_curr.empty:
-        return {"error": "No stock data available"}
+        if df_prev.empty or df_curr.empty:
+            print("[Notification] ⚠️ No stock data available")
+            return {"error": "No stock data available"}
 
-    report = generate_stock_report(df_prev, df_curr)
-    return report.to_dict(orient="records")
+        print("[Notification] Generating stock report...")
+        report = generate_stock_report(df_prev, df_curr)
+        print(f"[Notification] Generated report with {len(report)} rows")
+        
+        result = report.to_dict(orient="records")
+        print(f"[Notification] ✅ Returning {len(result)} notifications")
+        return result
+        
+    except Exception as e:
+        print(f"[Notification] ❌ Error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return {"error": str(e)}
 
 
 def get_notification_detail(product_name: str):
