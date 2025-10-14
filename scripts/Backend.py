@@ -186,14 +186,19 @@ async def get_notifications():
         print("[Backend] Fetching notifications")
         
         if not engine:
+            print("[Backend] Database engine not available")
             return []
         
-        # Get notifications from Notification.py
         notifications = get_notification_data()
         
-        # Handle error case
+        # Handle error case - if it returns a dict with 'error' key, return empty array
         if isinstance(notifications, dict) and "error" in notifications:
             print(f"[Backend] Notification error: {notifications['error']}")
+            return []
+        
+        # Handle case where notifications is not a list
+        if not isinstance(notifications, list):
+            print(f"[Backend] Unexpected notification format: {type(notifications)}")
             return []
         
         print(f"[Backend] ✅ Retrieved {len(notifications)} notifications")
