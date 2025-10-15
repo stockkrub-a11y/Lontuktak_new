@@ -151,20 +151,21 @@ async def upload_stock_files(
                     detail="Previous stock file is required for first upload"
                 )
             prev_content = await previous_stock.read()
-            df_prev = pd.read_excel(io.BytesIO(prev_content),header=1)
+            df_prev = pd.read_excel(io.BytesIO(prev_content), header=1)
             print(f"[Backend] Previous stock loaded from file: {len(df_prev)} rows")
-        df_curr = df_curr.rename(columns=[{ 
-            'ชื่อสินค้า':'product_name', 
-            'รหัสสินค้า':'product_sku',
-            'จำนวนคงเหลือ':'stock_level',
-            'จำนวน':'stock_level'
-        }])
-        df_prev = df_prev.rename(columns=[{ 
-            'ชื่อสินค้า':'product_name', 
-            'รหัสสินค้า':'product_sku',
-            'จำนวนคงเหลือ':'stock_level',
-            'จำนวน':'stock_level'
-        }])  
+        
+        df_curr = df_curr.rename(columns={
+            'ชื่อสินค้า': 'product_name',
+            'รหัสสินค้า': 'product_sku',
+            'จำนวนคงเหลือ': 'stock_level',
+            'จำนวน': 'stock_level'
+        })
+        df_prev = df_prev.rename(columns={
+            'ชื่อสินค้า': 'product_name',
+            'รหัสสินค้า': 'product_sku',
+            'จำนวนคงเหลือ': 'stock_level',
+            'จำนวน': 'stock_level'
+        })
 
         # Generate stock report
         print("[Backend] Generating stock report...")
