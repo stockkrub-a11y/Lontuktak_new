@@ -7,6 +7,7 @@ import os
 import pandas as pd
 import io
 import uvicorn
+from sqlalchemy import text
 
 # Import local modules
 from Auto_cleaning import auto_cleaning
@@ -222,7 +223,7 @@ async def upload_stock_files(
         
         # Clear and insert new data
         with engine.begin() as conn:
-            conn.execute("DELETE FROM base_stock")
+            conn.execute(text("DELETE FROM base_stock"))
         base_stock_df.to_sql('base_stock', engine, if_exists='append', index=False)
         
         print("[Backend] ✅ Upload completed successfully")
@@ -248,7 +249,7 @@ async def clear_base_stock():
             raise HTTPException(status_code=500, detail="Database not available")
         
         with engine.begin() as conn:
-            conn.execute("DELETE FROM base_stock")
+            conn.execute(text("DELETE FROM base_stock"))
         
         print("[Backend] ✅ base_stock cleared")
         return {"success": True, "message": "Base stock cleared successfully"}
