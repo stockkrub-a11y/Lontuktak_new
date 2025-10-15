@@ -11,6 +11,8 @@ CREATE TABLE IF NOT EXISTS stock_notifications (
     "Reorder_Qty" INTEGER,
     "Status" VARCHAR(50),
     "Description" TEXT,
+    unchanged_counter NUMERIC(10, 2) DEFAULT 0,
+    flag VARCHAR(50) DEFAULT 'stage',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -20,3 +22,6 @@ ON stock_notifications(created_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_stock_notifications_product 
 ON stock_notifications("Product");
+
+CREATE INDEX IF NOT EXISTS idx_stock_notifications_flag 
+ON stock_notifications(flag);
