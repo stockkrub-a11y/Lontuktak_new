@@ -73,6 +73,120 @@ async def health_check():
         "timestamp": datetime.now().isoformat()
     }
 
+@app.get("/api/test")
+async def test_endpoint():
+    """Simple test endpoint"""
+    print("\n" + "="*80, flush=True)
+    print("🧪 TEST ENDPOINT CALLED", flush=True)
+    print("="*80 + "\n", flush=True)
+    sys.stdout.flush()
+    return {"message": "Backend is working!", "timestamp": datetime.now().isoformat()}
+
+@app.get("/api/db-test")
+async def test_database():
+    """Test database connection and query stock_notifications table"""
+    print("\n" + "="*80, flush=True)
+    print("DATABASE TEST ENDPOINT CALLED", flush=True)
+    print("="*80, flush=True)
+    sys.stdout.flush()
+    
+    result = {
+        "engine_available": engine is not None,
+        "connection_test": False,
+        "table_exists": False,
+        "row_count": 0,
+        "sample_data": None,
+        "columns": [],
+        "error": None
+    }
+    
+    try:
+        if not engine:
+            result["error"] = "Database engine is None"
+            print("ERROR: Database engine is None", flush=True)
+            sys.stdout.flush()
+            return result
+        
+        # Test 1: Simple connection test
+        print("Test 1: Testing database connection...", flush=True)
+        sys.stdout.flush()
+        test_query = "SELECT 1 as test"
+        test_df = pd.read_sql(test_query, engine)
+        result["connection_test"] = True
+        print("✅ Database connection successful", flush=True)
+        sys.stdout.flush()
+        
+        # Test 2: Check if table exists
+        print("Test 2: Checking if stock_notifications table exists...", flush=True)
+        sys.stdout.flush()
+        table_check_query = """
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_name = 'stock_notifications'
+            ) as table_exists
+        """
+        table_check_df = pd.read_sql(table_check_query, engine)
+        result["table_exists"] = bool(table_check_df.iloc[0]['table_exists'])
+        print(f"Table exists: {result['table_exists']}", flush=True)
+        sys.stdout.flush()
+        
+        if not result["table_exists"]:
+            result["error"] = "stock_notifications table does not exist"
+            return result
+        
+        # Test 3: Count rows
+        print("Test 3: Counting rows in stock_notifications...", flush=True)
+        sys.stdout.flush()
+        count_query = "SELECT COUNT(*) as count FROM stock_notifications"
+        count_df = pd.read_sql(count_query, engine)
+        result["row_count"] = int(count_df.iloc[0]['count'])
+        print(f"✅ Row count: {result['row_count']}", flush=True)
+        sys.stdout.flush()
+        
+        # Test 4: Get column names
+        print("Test 4: Getting column names...", flush=True)
+        sys.stdout.flush()
+        columns_query = """
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'stock_notifications'
+            ORDER BY ordinal_position
+        """
+        columns_df = pd.read_sql(columns_query, engine)
+        result["columns"] = columns_df['column_name'].tolist()
+        print(f"✅ Columns: {result['columns']}", flush=True)
+        sys.stdout.flush()
+        
+        # Test 5: Get sample data
+        if result["row_count"] > 0:
+            print("Test 5: Fetching sample data...", flush=True)
+            sys.stdout.flush()
+            sample_query = "SELECT * FROM stock_notifications LIMIT 3"
+            sample_df = pd.read_sql(sample_query, engine)
+            
+            # Convert to dict and handle datetime
+            sample_records = sample_df.to_dict('records')
+            for record in sample_records:
+                for key, value in record.items():
+                    if pd.notna(value) and isinstance(value, (pd.Timestamp, datetime)):
+                        record[key] = str(value)
+            
+            result["sample_data"] = sample_records
+            print(f"✅ Sample data retrieved: {len(sample_records)} rows", flush=True)
+            sys.stdout.flush()
+        
+        print("="*80 + "\n", flush=True)
+        sys.stdout.flush()
+        return result
+        
+    except Exception as e:
+        result["error"] = str(e)
+        print(f"ERROR in database test: {str(e)}", flush=True)
+        import traceback
+        traceback.print_exc()
+        sys.stdout.flush()
+        return result
+
 # ============================================================================
 # NOTIFICATIONS ENDPOINTS
 # ============================================================================
@@ -81,134 +195,61 @@ async def health_check():
 async def get_notifications():
     """Get inventory notifications from stock_notifications table"""
     print("\n" + "="*80, flush=True)
-    print("🔔 [NOTIFICATIONS ENDPOINT CALLED]", flush=True)
+    print("NOTIFICATIONS ENDPOINT CALLED", flush=True)
     print("="*80, flush=True)
     sys.stdout.flush()
     
     try:
         if not engine:
-            print("❌ Database engine not available", flush=True)
+            print("ERROR: Database engine not available", flush=True)
             sys.stdout.flush()
             return []
         
-        print("✅ Database engine available", flush=True)
+        print("Database engine available, executing query...", flush=True)
         sys.stdout.flush()
         
-        try:
-            test_query = "SELECT 1 as test"
-            test_df = pd.read_sql(test_query, engine)
-            print(f"✅ Database connection test passed: {test_df.iloc[0]['test']}", flush=True)
-            sys.stdout.flush()
-        except Exception as test_error:
-            print(f"❌ Database connection test FAILED: {str(test_error)}", flush=True)
+        # Simple query to get all notifications
+        query = "SELECT * FROM stock_notifications ORDER BY created_at DESC LIMIT 100"
+        print(f"Query: {query}", flush=True)
+        sys.stdout.flush()
+        
+        df = pd.read_sql(query, engine)
+        
+        print(f"Query executed. Rows returned: {len(df)}", flush=True)
+        sys.stdout.flush()
+        
+        if df.empty:
+            print("DataFrame is empty, returning empty array", flush=True)
             sys.stdout.flush()
             return []
         
-        try:
-            print("\n📋 Checking if stock_notifications table exists...", flush=True)
-            sys.stdout.flush()
-            
-            table_check_query = """
-                SELECT EXISTS (
-                    SELECT FROM information_schema.tables 
-                    WHERE table_schema = 'public'
-                    AND table_name = 'stock_notifications'
-                )
-            """
-            table_exists_df = pd.read_sql(table_check_query, engine)
-            table_exists = table_exists_df.iloc[0]['exists']
-            print(f"Table exists: {table_exists}", flush=True)
-            sys.stdout.flush()
-            
-            if not table_exists:
-                print("❌ stock_notifications table does not exist!", flush=True)
-                sys.stdout.flush()
-                return []
-            
-            print("\n📊 Checking row count...", flush=True)
-            sys.stdout.flush()
-            
-            count_query = "SELECT COUNT(*) as total FROM stock_notifications"
-            count_df = pd.read_sql(count_query, engine)
-            total_rows = int(count_df.iloc[0]['total'])
-            print(f"✅ Total rows in stock_notifications: {total_rows}", flush=True)
-            sys.stdout.flush()
-            
-            if total_rows == 0:
-                print("⚠️ Table exists but has no data", flush=True)
-                sys.stdout.flush()
-                return []
-            
-            print("\n📝 Checking column names...", flush=True)
-            sys.stdout.flush()
-            
-            check_columns_query = """
-                SELECT column_name 
-                FROM information_schema.columns 
-                WHERE table_schema = 'public'
-                AND table_name = 'stock_notifications'
-                ORDER BY ordinal_position
-            """
-            columns_df = pd.read_sql(check_columns_query, engine)
-            available_columns = columns_df['column_name'].tolist()
-            print(f"✅ Available columns ({len(available_columns)}): {available_columns}", flush=True)
-            sys.stdout.flush()
-            
-            print("\n🔍 Querying notifications data...", flush=True)
-            sys.stdout.flush()
-            
-            query = """
-                SELECT *
-                FROM stock_notifications
-                ORDER BY created_at DESC
-                LIMIT 100
-            """
-            df = pd.read_sql(query, engine)
-            
-            print(f"✅ Query returned {len(df)} rows", flush=True)
-            sys.stdout.flush()
-            
-            if not df.empty:
-                print(f"✅ Actual column names from query: {df.columns.tolist()}", flush=True)
-                print(f"\n📄 First row sample:", flush=True)
-                first_row = df.iloc[0].to_dict()
-                for key, value in first_row.items():
-                    print(f"  {key}: {value}", flush=True)
-                sys.stdout.flush()
-                
-                # Convert to list of dicts
-                notifications = df.to_dict('records')
-                
-                # Convert datetime to string
-                for notification in notifications:
-                    for key, value in notification.items():
-                        if pd.notna(value) and isinstance(value, (pd.Timestamp, datetime)):
-                            notification[key] = str(value)
-                
-                print(f"\n✅ Returning {len(notifications)} notifications", flush=True)
-                print("="*80 + "\n", flush=True)
-                sys.stdout.flush()
-                return notifications
-            else:
-                print("⚠️ Query returned empty dataframe", flush=True)
-                print("="*80 + "\n", flush=True)
-                sys.stdout.flush()
-                return []
-                
-        except Exception as db_error:
-            print(f"\n❌ Database query failed: {str(db_error)}", flush=True)
-            import traceback
-            traceback.print_exc()
-            sys.stdout.flush()
-            print("="*80 + "\n", flush=True)
-            return []
+        print(f"DataFrame columns: {df.columns.tolist()}", flush=True)
+        print(f"First row sample: {df.iloc[0].to_dict()}", flush=True)
+        sys.stdout.flush()
+        
+        # Convert to list of dicts
+        notifications = df.to_dict('records')
+        
+        print(f"Converted to {len(notifications)} notification records", flush=True)
+        sys.stdout.flush()
+        
+        # Convert datetime to string
+        for notification in notifications:
+            for key, value in notification.items():
+                if pd.notna(value) and isinstance(value, (pd.Timestamp, datetime)):
+                    notification[key] = str(value)
+        
+        print(f"Returning {len(notifications)} notifications", flush=True)
+        print("="*80 + "\n", flush=True)
+        sys.stdout.flush()
+        
+        return notifications
         
     except Exception as e:
-        print(f"\n❌ Error in get_notifications: {str(e)}", flush=True)
+        print(f"ERROR in get_notifications: {str(e)}", flush=True)
         import traceback
         traceback.print_exc()
         sys.stdout.flush()
-        print("="*80 + "\n", flush=True)
         return []
 
 @app.get("/notifications/check_base_stock")
