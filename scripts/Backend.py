@@ -475,19 +475,68 @@ async def train_model(
             print("[Backend] Cleaning data...")
             df_cleaned = auto_cleaning(sales_temp_path, product_temp_path, engine)
             
-            print(f"[Backend] Cleaned data: {len(df_cleaned)} rows")
+            rows_uploaded = len(df_cleaned)
+            print(f"[Backend] Cleaned data: {rows_uploaded} rows")
+            
+            response = {
+                "success": True,
+                "data_cleaning": {
+                    "status": "completed",
+                    "rows_uploaded": rows_uploaded,
+                    "message": f"Successfully cleaned and uploaded {rows_uploaded} rows"
+                },
+                "ml_training": {
+                    "status": "pending",
+                    "message": "Training not started"
+                }
+            }
             
             # Train the model
             print("[Backend] Training forecasting model...")
-            df_window_raw, df_window, base_model, X_train, y_train, X_test, y_test, product_sku_last = update_model_and_train(df_cleaned)
+            try:
+                df_window_raw, df_window, base_model, X_train, y_train, X_test, y_test, product_sku_last = update_model_and_train(df_cleaned)
+                
+                print("[Backend] ✅ Model training completed successfully")
+                
+                response["ml_training"] = {
+                    "status": "completed",
+                    "message": "Model trained successfully"
+                }
+                
+                try:
+                    print("[Backend] Attempting to generate forecasts...")
+                    forecast_results = forcast_loop()
+                    
+                    if forecast_results and len(forecast_results) > 0:
+                        # Save forecasts to database
+                        forecast_df = pd.DataFrame(forecast_results)
+                        forecast_df['created_at'] = datetime.now()
+                        
+                        with engine.begin() as conn:
+                            conn.execute(text("DELETE FROM forecasts"))
+                        
+                        forecast_df.to_sql('forecasts', engine, if_exists='append', index=False)
+                        
+                        print(f"[Backend] ✅ Generated {len(forecast_results)} forecasts")
+                        
+                        response["ml_training"]["forecast_rows"] = len(forecast_results)
+                        response["ml_training"]["message"] = f"Model trained and {len(forecast_results)} forecasts generated"
+                    else:
+                        response["ml_training"]["message"] = "Model trained but no forecasts generated"
+                        
+                except Exception as forecast_error:
+                    print(f"[Backend] ⚠️ Forecast generation failed: {str(forecast_error)}")
+                    response["ml_training"]["message"] = f"Model trained but forecast generation failed: {str(forecast_error)}"
+                
+            except Exception as train_error:
+                print(f"[Backend] ❌ Model training failed: {str(train_error)}")
+                response["ml_training"] = {
+                    "status": "failed",
+                    "message": f"Training failed: {str(train_error)}"
+                }
             
-            print("[Backend] ✅ Model training completed successfully")
+            return response
             
-            return {
-                "success": True,
-                "message": "Model trained successfully",
-                "rows": len(df_cleaned)
-            }
         finally:
             # Clean up temporary files
             import os
