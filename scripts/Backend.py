@@ -51,16 +51,44 @@ async def health_check():
 @app.get("/api/notifications")
 async def get_notifications():
     """Get inventory notifications from stock_notifications table"""
+    print("\n" + "="*80)
+    print("🔔 [NOTIFICATIONS ENDPOINT CALLED]")
+    print("="*80)
+    
     try:
-        print("[Backend] Fetching notifications")
-        
         if not engine:
-            print("[Backend] ❌ Database engine not available")
+            print("❌ Database engine not available")
             return []
         
+        print("✅ Database engine available")
+        
         try:
-            print("[Backend] Querying stock_notifications table...")
+            print("\n📋 Checking if stock_notifications table exists...")
+            table_check_query = """
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_name = 'stock_notifications'
+                )
+            """
+            table_exists_df = pd.read_sql(table_check_query, engine)
+            table_exists = table_exists_df.iloc[0]['exists']
+            print(f"Table exists: {table_exists}")
             
+            if not table_exists:
+                print("❌ stock_notifications table does not exist!")
+                return []
+            
+            print("\n📊 Checking row count...")
+            count_query = "SELECT COUNT(*) as total FROM stock_notifications"
+            count_df = pd.read_sql(count_query, engine)
+            total_rows = int(count_df.iloc[0]['total'])
+            print(f"Total rows in stock_notifications: {total_rows}")
+            
+            if total_rows == 0:
+                print("⚠️ Table exists but has no data")
+                return []
+            
+            print("\n📝 Checking column names...")
             check_columns_query = """
                 SELECT column_name 
                 FROM information_schema.columns 
@@ -68,8 +96,10 @@ async def get_notifications():
                 ORDER BY ordinal_position
             """
             columns_df = pd.read_sql(check_columns_query, engine)
-            print(f"[Backend] Available columns in stock_notifications: {columns_df['column_name'].tolist()}")
+            available_columns = columns_df['column_name'].tolist()
+            print(f"Available columns: {available_columns}")
             
+            print("\n🔍 Querying notifications data...")
             query = """
                 SELECT *
                 FROM stock_notifications
@@ -78,34 +108,42 @@ async def get_notifications():
             """
             df = pd.read_sql(query, engine)
             
-            print(f"[Backend] Query returned {len(df)} rows")
+            print(f"Query returned {len(df)} rows")
+            
             if not df.empty:
-                print(f"[Backend] Actual column names from query: {df.columns.tolist()}")
-                print(f"[Backend] First row sample: {df.iloc[0].to_dict()}")
+                print(f"Actual column names from query: {df.columns.tolist()}")
+                print(f"\nFirst row sample:")
+                print(df.iloc[0].to_dict())
                 
                 # Convert to list of dicts
                 notifications = df.to_dict('records')
                 
                 # Convert datetime to string
                 for notification in notifications:
-                    if 'created_at' in notification and notification['created_at']:
-                        notification['created_at'] = str(notification['created_at'])
+                    for key, value in notification.items():
+                        if pd.notna(value) and isinstance(value, (pd.Timestamp, datetime)):
+                            notification[key] = str(value)
                 
-                print(f"[Backend] ✅ Returning {len(notifications)} notifications")
+                print(f"\n✅ Returning {len(notifications)} notifications")
+                print("="*80 + "\n")
                 return notifications
             else:
-                print("[Backend] No notifications in database")
+                print("⚠️ Query returned empty dataframe")
+                print("="*80 + "\n")
                 return []
+                
         except Exception as db_error:
-            print(f"[Backend] Database query failed: {str(db_error)}")
+            print(f"\n❌ Database query failed: {str(db_error)}")
             import traceback
             traceback.print_exc()
+            print("="*80 + "\n")
             return []
         
     except Exception as e:
-        print(f"[Backend] ❌ Error in get_notifications: {str(e)}")
+        print(f"\n❌ Error in get_notifications: {str(e)}")
         import traceback
         traceback.print_exc()
+        print("="*80 + "\n")
         return []
 
 @app.get("/notifications/check_base_stock")
