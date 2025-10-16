@@ -51,19 +51,25 @@ async def health_check():
 @app.get("/api/notifications")
 async def get_notifications():
     """Get inventory notifications from stock_notifications table"""
-    print("\n" + "="*80)
-    print("🔔 [NOTIFICATIONS ENDPOINT CALLED]")
-    print("="*80)
+    import sys
+    print("\n" + "="*80, flush=True)
+    print("🔔 [NOTIFICATIONS ENDPOINT CALLED]", flush=True)
+    print("="*80, flush=True)
+    sys.stdout.flush()
     
     try:
         if not engine:
-            print("❌ Database engine not available")
+            print("❌ Database engine not available", flush=True)
+            sys.stdout.flush()
             return []
         
-        print("✅ Database engine available")
+        print("✅ Database engine available", flush=True)
+        sys.stdout.flush()
         
         try:
-            print("\n📋 Checking if stock_notifications table exists...")
+            print("\n📋 Checking if stock_notifications table exists...", flush=True)
+            sys.stdout.flush()
+            
             table_check_query = """
                 SELECT EXISTS (
                     SELECT FROM information_schema.tables 
@@ -72,23 +78,31 @@ async def get_notifications():
             """
             table_exists_df = pd.read_sql(table_check_query, engine)
             table_exists = table_exists_df.iloc[0]['exists']
-            print(f"Table exists: {table_exists}")
+            print(f"Table exists: {table_exists}", flush=True)
+            sys.stdout.flush()
             
             if not table_exists:
-                print("❌ stock_notifications table does not exist!")
+                print("❌ stock_notifications table does not exist!", flush=True)
+                sys.stdout.flush()
                 return []
             
-            print("\n📊 Checking row count...")
+            print("\n📊 Checking row count...", flush=True)
+            sys.stdout.flush()
+            
             count_query = "SELECT COUNT(*) as total FROM stock_notifications"
             count_df = pd.read_sql(count_query, engine)
             total_rows = int(count_df.iloc[0]['total'])
-            print(f"Total rows in stock_notifications: {total_rows}")
+            print(f"Total rows in stock_notifications: {total_rows}", flush=True)
+            sys.stdout.flush()
             
             if total_rows == 0:
-                print("⚠️ Table exists but has no data")
+                print("⚠️ Table exists but has no data", flush=True)
+                sys.stdout.flush()
                 return []
             
-            print("\n📝 Checking column names...")
+            print("\n📝 Checking column names...", flush=True)
+            sys.stdout.flush()
+            
             check_columns_query = """
                 SELECT column_name 
                 FROM information_schema.columns 
@@ -97,9 +111,12 @@ async def get_notifications():
             """
             columns_df = pd.read_sql(check_columns_query, engine)
             available_columns = columns_df['column_name'].tolist()
-            print(f"Available columns: {available_columns}")
+            print(f"Available columns: {available_columns}", flush=True)
+            sys.stdout.flush()
             
-            print("\n🔍 Querying notifications data...")
+            print("\n🔍 Querying notifications data...", flush=True)
+            sys.stdout.flush()
+            
             query = """
                 SELECT *
                 FROM stock_notifications
@@ -108,12 +125,14 @@ async def get_notifications():
             """
             df = pd.read_sql(query, engine)
             
-            print(f"Query returned {len(df)} rows")
+            print(f"Query returned {len(df)} rows", flush=True)
+            sys.stdout.flush()
             
             if not df.empty:
-                print(f"Actual column names from query: {df.columns.tolist()}")
-                print(f"\nFirst row sample:")
-                print(df.iloc[0].to_dict())
+                print(f"Actual column names from query: {df.columns.tolist()}", flush=True)
+                print(f"\nFirst row sample:", flush=True)
+                print(df.iloc[0].to_dict(), flush=True)
+                sys.stdout.flush()
                 
                 # Convert to list of dicts
                 notifications = df.to_dict('records')
@@ -124,26 +143,30 @@ async def get_notifications():
                         if pd.notna(value) and isinstance(value, (pd.Timestamp, datetime)):
                             notification[key] = str(value)
                 
-                print(f"\n✅ Returning {len(notifications)} notifications")
-                print("="*80 + "\n")
+                print(f"\n✅ Returning {len(notifications)} notifications", flush=True)
+                print("="*80 + "\n", flush=True)
+                sys.stdout.flush()
                 return notifications
             else:
-                print("⚠️ Query returned empty dataframe")
-                print("="*80 + "\n")
+                print("⚠️ Query returned empty dataframe", flush=True)
+                print("="*80 + "\n", flush=True)
+                sys.stdout.flush()
                 return []
                 
         except Exception as db_error:
-            print(f"\n❌ Database query failed: {str(db_error)}")
+            print(f"\n❌ Database query failed: {str(db_error)}", flush=True)
             import traceback
             traceback.print_exc()
-            print("="*80 + "\n")
+            sys.stdout.flush()
+            print("="*80 + "\n", flush=True)
             return []
         
     except Exception as e:
-        print(f"\n❌ Error in get_notifications: {str(e)}")
+        print(f"\n❌ Error in get_notifications: {str(e)}", flush=True)
         import traceback
         traceback.print_exc()
-        print("="*80 + "\n")
+        sys.stdout.flush()
+        print("="*80 + "\n", flush=True)
         return []
 
 @app.get("/notifications/check_base_stock")
