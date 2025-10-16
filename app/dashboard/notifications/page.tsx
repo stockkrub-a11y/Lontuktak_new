@@ -80,12 +80,17 @@ export default function NotificationsPage() {
   useEffect(() => {
     async function fetchNotifications() {
       try {
-        console.log("[v0] Fetching notifications...")
+        console.log("[v0] ===== FETCHING NOTIFICATIONS START =====")
+        console.log("[v0] API URL:", process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000")
+
         const data = await getNotifications()
+
+        console.log("[v0] ===== FETCHING NOTIFICATIONS COMPLETE =====")
         console.log("[v0] Received data:", data)
         console.log("[v0] Data type:", typeof data)
         console.log("[v0] Is array:", Array.isArray(data))
         console.log("[v0] Data length:", Array.isArray(data) ? data.length : "N/A")
+
         if (Array.isArray(data) && data.length > 0) {
           console.log("[v0] First item:", data[0])
           console.log("[v0] First item keys:", Object.keys(data[0]))

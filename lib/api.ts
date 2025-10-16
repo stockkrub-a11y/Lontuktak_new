@@ -124,23 +124,30 @@ export async function getBestSellers(year: number, month: number, topN = 10) {
 }
 
 export async function getNotifications() {
+  console.log("[v0] ===== getNotifications() CALLED =====")
+  console.log("[v0] API_BASE_URL:", API_BASE_URL)
+
   try {
-    return await apiFetch<
-      Array<{
-        Product: string
-        Stock: number
-        Last_Stock: number
-        "Decrease_Rate(%)": number
-        Weeks_To_Empty: number
-        MinStock: number
-        Buffer: number
-        Reorder_Qty: number
-        Status: string
-        Description: string
-      }>
-    >("/api/notifications")
+    const result =
+      await apiFetch<
+        Array<{
+          Product: string
+          Stock: number
+          Last_Stock: number
+          "Decrease_Rate(%)": number
+          Weeks_To_Empty: number
+          MinStock: number
+          Buffer: number
+          Reorder_Qty: number
+          Status: string
+          Description: string
+        }>
+      >("/api/notifications")
+
+    console.log("[v0] getNotifications() result:", result)
+    return result
   } catch (error) {
-    console.error("[v0] Failed to fetch notifications:", error)
+    console.error("[v0] getNotifications() error:", error)
     // Return empty array if backend is not available
     return []
   }
