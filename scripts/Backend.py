@@ -500,6 +500,76 @@ async def get_dashboard_analytics():
         }
 
 # ============================================================================
+# PREDICT ENDPOINTS
+# ============================================================================
+
+@app.get("/predict/existing")
+async def get_existing_forecasts():
+    """Get existing forecast data from the forecasts table"""
+    try:
+        print("[Backend] Fetching existing forecasts...")
+        
+        if not engine:
+            return {"success": False, "forecast": []}
+        
+        try:
+            query = """
+                SELECT 
+                    product_sku,
+                    forecast_date,
+                    predicted_sales,
+                    current_sales,
+                    current_date_col
+                FROM forecasts
+                ORDER BY forecast_date ASC, product_sku ASC
+            """
+            df = pd.read_sql(query, engine)
+            
+            if not df.empty:
+                print(f"[Backend] ✅ Retrieved {len(df)} forecast records")
+                forecasts = df.to_dict('records')
+                # Convert datetime to string for JSON serialization
+                for forecast in forecasts:
+                    if 'forecast_date' in forecast and pd.notna(forecast['forecast_date']):
+                        forecast['forecast_date'] = str(forecast['forecast_date'])
+                    if 'current_date_col' in forecast and pd.notna(forecast['current_date_col']):
+                        forecast['current_date_col'] = str(forecast['current_date_col'])
+                return {"success": True, "forecast": forecasts}
+            else:
+                print("[Backend] No forecast data found")
+                return {"success": True, "forecast": []}
+        except Exception as db_error:
+            print(f"[Backend] Database query failed: {str(db_error)}")
+            import traceback
+            traceback.print_exc()
+            return {"success": False, "forecast": []}
+        
+    except Exception as e:
+        print(f"[Backend] ❌ Error fetching forecasts: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return {"success": False, "forecast": []}
+
+@app.delete("/predict/clear")
+async def clear_forecasts():
+    """Clear all forecast data from the forecasts table"""
+    try:
+        print("[Backend] Clearing forecasts table...")
+        
+        if not engine:
+            raise HTTPException(status_code=500, detail="Database not available")
+        
+        with engine.begin() as conn:
+            conn.execute(text("DELETE FROM forecasts"))
+        
+        print("[Backend] ✅ Forecasts cleared")
+        return {"success": True, "message": "Forecasts cleared successfully"}
+        
+    except Exception as e:
+        print(f"[Backend] ❌ Error clearing forecasts: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ============================================================================
 # RUN SERVER
 # ============================================================================
 
