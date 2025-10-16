@@ -453,46 +453,43 @@ async def train_model(
         print(f"[Backend] Product file: {product_file.filename}")
         print(f"[Backend] Sales file: {sales_file.filename}")
         
-        # Load data into DataFrames
-        df_product = pd.read_excel(io.BytesIO(product_content))
-        df_sales = pd.read_excel(io.BytesIO(sales_content))
+        import tempfile
         
-        print(f"[Backend] Product data: {len(df_product)} rows")
-        print(f"[Backend] Sales data: {len(df_sales)} rows")
+        # Create temporary files
+        with tempfile.NamedTemporaryFile(mode='wb', delete=False, suffix='.xlsx') as product_temp:
+            product_temp.write(product_content)
+            product_temp_path = product_temp.name
         
-        # Clean the data
-        print("[Backend] Cleaning data...")
-        df_product_clean, df_sales_clean = auto_cleaning(df_product, df_sales)
+        with tempfile.NamedTemporaryFile(mode='wb', delete=False, suffix='.xlsx') as sales_temp:
+            sales_temp.write(sales_content)
+            sales_temp_path = sales_temp.name
         
-        print(f"[Backend] Cleaned product data: {len(df_product_clean)} rows")
-        print(f"[Backend] Cleaned sales data: {len(df_sales_clean)} rows")
-        
-        # Save to database
-        print("[Backend] Saving to database...")
-        
-        # Clear existing data
-        with engine.begin() as conn:
-            conn.execute(text("DELETE FROM base_product"))
-            conn.execute(text("DELETE FROM base_data"))
-        
-        # Save cleaned data
-        df_product_clean.to_sql('base_product', engine, if_exists='append', index=False)
-        df_sales_clean.to_sql('base_data', engine, if_exists='append', index=False)
-        
-        print("[Backend] Data saved to database")
-        
-        # Train the model
-        print("[Backend] Training forecasting model...")
-        update_model_and_train()
-        
-        print("[Backend] ✅ Model training completed successfully")
-        
-        return {
-            "success": True,
-            "message": "Model trained successfully",
-            "product_rows": len(df_product_clean),
-            "sales_rows": len(df_sales_clean)
-        }
+        try:
+            # Clean the data using file paths
+            print("[Backend] Cleaning data...")
+            df_cleaned = auto_cleaning(sales_temp_path, product_temp_path, engine)
+            
+            print(f"[Backend] Cleaned data: {len(df_cleaned)} rows")
+            
+            # Train the model
+            print("[Backend] Training forecasting model...")
+            update_model_and_train()
+            
+            print("[Backend] ✅ Model training completed successfully")
+            
+            return {
+                "success": True,
+                "message": "Model trained successfully",
+                "rows": len(df_cleaned)
+            }
+        finally:
+            # Clean up temporary files
+            import os
+            try:
+                os.unlink(product_temp_path)
+                os.unlink(sales_temp_path)
+            except:
+                pass
         
     except Exception as e:
         print(f"[Backend] ❌ Error in train_model: {str(e)}")
