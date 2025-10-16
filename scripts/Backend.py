@@ -8,6 +8,7 @@ import pandas as pd
 import io
 import uvicorn
 from sqlalchemy import text
+import sys
 
 # Import local modules
 from Auto_cleaning import auto_cleaning
@@ -51,7 +52,6 @@ async def health_check():
 @app.get("/api/notifications")
 async def get_notifications():
     """Get inventory notifications from stock_notifications table"""
-    import sys
     print("\n" + "="*80, flush=True)
     print("🔔 [NOTIFICATIONS ENDPOINT CALLED]", flush=True)
     print("="*80, flush=True)
@@ -67,13 +67,24 @@ async def get_notifications():
         sys.stdout.flush()
         
         try:
+            test_query = "SELECT 1 as test"
+            test_df = pd.read_sql(test_query, engine)
+            print(f"✅ Database connection test passed: {test_df.iloc[0]['test']}", flush=True)
+            sys.stdout.flush()
+        except Exception as test_error:
+            print(f"❌ Database connection test FAILED: {str(test_error)}", flush=True)
+            sys.stdout.flush()
+            return []
+        
+        try:
             print("\n📋 Checking if stock_notifications table exists...", flush=True)
             sys.stdout.flush()
             
             table_check_query = """
                 SELECT EXISTS (
                     SELECT FROM information_schema.tables 
-                    WHERE table_name = 'stock_notifications'
+                    WHERE table_schema = 'public'
+                    AND table_name = 'stock_notifications'
                 )
             """
             table_exists_df = pd.read_sql(table_check_query, engine)
@@ -92,7 +103,7 @@ async def get_notifications():
             count_query = "SELECT COUNT(*) as total FROM stock_notifications"
             count_df = pd.read_sql(count_query, engine)
             total_rows = int(count_df.iloc[0]['total'])
-            print(f"Total rows in stock_notifications: {total_rows}", flush=True)
+            print(f"✅ Total rows in stock_notifications: {total_rows}", flush=True)
             sys.stdout.flush()
             
             if total_rows == 0:
@@ -106,12 +117,13 @@ async def get_notifications():
             check_columns_query = """
                 SELECT column_name 
                 FROM information_schema.columns 
-                WHERE table_name = 'stock_notifications'
+                WHERE table_schema = 'public'
+                AND table_name = 'stock_notifications'
                 ORDER BY ordinal_position
             """
             columns_df = pd.read_sql(check_columns_query, engine)
             available_columns = columns_df['column_name'].tolist()
-            print(f"Available columns: {available_columns}", flush=True)
+            print(f"✅ Available columns ({len(available_columns)}): {available_columns}", flush=True)
             sys.stdout.flush()
             
             print("\n🔍 Querying notifications data...", flush=True)
@@ -125,13 +137,15 @@ async def get_notifications():
             """
             df = pd.read_sql(query, engine)
             
-            print(f"Query returned {len(df)} rows", flush=True)
+            print(f"✅ Query returned {len(df)} rows", flush=True)
             sys.stdout.flush()
             
             if not df.empty:
-                print(f"Actual column names from query: {df.columns.tolist()}", flush=True)
-                print(f"\nFirst row sample:", flush=True)
-                print(df.iloc[0].to_dict(), flush=True)
+                print(f"✅ Actual column names from query: {df.columns.tolist()}", flush=True)
+                print(f"\n📄 First row sample:", flush=True)
+                first_row = df.iloc[0].to_dict()
+                for key, value in first_row.items():
+                    print(f"  {key}: {value}", flush=True)
                 sys.stdout.flush()
                 
                 # Convert to list of dicts
