@@ -5,15 +5,22 @@ import os
 # Add scripts directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
+# Last updated: 2025-10-17 03:30:00
+
 # Import the app from Backend.py
 from Backend import app, engine
 
 import pandas as pd
 from datetime import datetime
 
+print("=" * 80)
+print("BACKEND MAIN.PY LOADED - Timestamp: 2025-10-17 03:30:00")
+print("=" * 80)
+
 @app.get("/api/db-test")
 async def db_test():
     """Test database connection and check stock_notifications table"""
+    print("DB-TEST ENDPOINT CALLED", flush=True)
     try:
         if not engine:
             return {"error": "Database engine not available"}
@@ -21,6 +28,7 @@ async def db_test():
         # Test basic connection
         test_query = "SELECT 1 as test"
         test_df = pd.read_sql(test_query, engine)
+        print("Database connection test passed", flush=True)
         
         # Check if table exists
         table_check = """
@@ -31,6 +39,7 @@ async def db_test():
         )
         """
         table_exists = pd.read_sql(table_check, engine).iloc[0, 0]
+        print(f"Table exists check: {table_exists}", flush=True)
         
         if not table_exists:
             return {
@@ -43,6 +52,7 @@ async def db_test():
         count_query = "SELECT COUNT(*) as count FROM stock_notifications"
         count_df = pd.read_sql(count_query, engine)
         row_count = int(count_df.iloc[0, 0])
+        print(f"Row count: {row_count}", flush=True)
         
         # Get column names
         columns_query = """
@@ -54,6 +64,7 @@ async def db_test():
         """
         columns_df = pd.read_sql(columns_query, engine)
         columns = columns_df['column_name'].tolist()
+        print(f"Columns: {columns}", flush=True)
         
         # Get sample data
         sample_query = "SELECT * FROM stock_notifications LIMIT 3"
@@ -66,6 +77,8 @@ async def db_test():
                 if isinstance(value, (pd.Timestamp, datetime)):
                     row[key] = str(value)
         
+        print(f"Returning diagnostic data with {row_count} total rows", flush=True)
+        
         return {
             "database_connected": True,
             "table_exists": True,
@@ -75,6 +88,9 @@ async def db_test():
         }
         
     except Exception as e:
+        print(f"ERROR in db_test: {str(e)}", flush=True)
+        import traceback
+        traceback.print_exc()
         return {
             "error": str(e),
             "error_type": type(e).__name__
