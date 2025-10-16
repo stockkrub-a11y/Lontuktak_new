@@ -65,7 +65,7 @@ export default function NotificationsPage() {
         const response = await fetch(`${apiUrl}/notifications/check_base_stock`)
         const data = await response.json()
         console.log("[v0] base_stock check:", data)
-        setBaseStockExists(data.exists && data.has_data)
+        setBaseStockExists(data.exists && data.count > 0)
       } catch (error) {
         console.error("[v0] Failed to check base_stock:", error)
         setBaseStockExists(false)

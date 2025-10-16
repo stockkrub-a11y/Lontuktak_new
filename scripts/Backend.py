@@ -295,7 +295,7 @@ async def get_stock_levels(
         if not engine:
             return {"success": False, "data": []}
         
-        query = """
+        query = text("""
             SELECT 
                 product_name,
                 product_sku,
@@ -305,27 +305,33 @@ async def get_stock_levels(
                 unchanged_counter,
                 updated_at
             FROM base_stock
-        """
+            WHERE 1=1
+        """)
         
-        # Add filters
+        # Build conditions
         conditions = []
-        if category:
-            conditions.append(f"\"หมวดหมู่\" = '{category}'")
-        if status:
-            conditions.append(f"flag = '{status}'")
+        params = {}
         
+        if category:
+            conditions.append('"หมวดหมู่" = :category')
+            params['category'] = category
+        if status:
+            conditions.append('flag = :status')
+            params['status'] = status
+        
+        # Add conditions to query
         if conditions:
-            query += " WHERE " + " AND ".join(conditions)
+            query = text(str(query) + " AND " + " AND ".join(conditions))
         
         # Add sorting
         if sort_by == "quantity_asc":
-            query += " ORDER BY stock_level ASC"
+            query = text(str(query) + " ORDER BY stock_level ASC")
         elif sort_by == "quantity_desc":
-            query += " ORDER BY stock_level DESC"
+            query = text(str(query) + " ORDER BY stock_level DESC")
         else:
-            query += " ORDER BY product_name ASC"
+            query = text(str(query) + " ORDER BY product_name ASC")
         
-        df = pd.read_sql(query, engine)
+        df = pd.read_sql(query, engine, params=params if params else None)
         
         if not df.empty:
             print(f"[Backend] ✅ Retrieved {len(df)} stock items")
@@ -351,25 +357,25 @@ async def get_stock_categories():
         print("[Backend] Fetching stock categories...")
         
         if not engine:
-            return {"success": False, "categories": []}
+            return {"success": False, "data": []}
         
         try:
-            query = 'SELECT DISTINCT "หมวดหมู่" as category FROM base_stock WHERE "หมวดหมู่" IS NOT NULL'
+            query = text('SELECT DISTINCT "หมวดหมู่" as category FROM base_stock WHERE "หมวดหมู่" IS NOT NULL')
             df = pd.read_sql(query, engine)
             
             if not df.empty:
                 categories = df['category'].tolist()
                 print(f"[Backend] ✅ Found {len(categories)} categories")
-                return {"success": True, "categories": categories}
+                return {"success": True, "data": categories}
             else:
-                return {"success": True, "categories": []}
+                return {"success": True, "data": []}
         except Exception as db_error:
             print(f"[Backend] Error fetching categories: {str(db_error)}")
-            return {"success": True, "categories": []}
+            return {"success": True, "data": []}
         
     except Exception as e:
         print(f"[Backend] ❌ Error in get_stock_categories: {str(e)}")
-        return {"success": False, "categories": []}
+        return {"success": False, "data": []}
 
 # ============================================================================
 # ANALYSIS ENDPOINTS
@@ -504,8 +510,7 @@ async def get_analysis_historical_sales(sku: str = Query(..., description="Produ
             return {"success": False, "message": "Database not available", "chart_data": [], "table_data": [], "sizes": []}
         
         try:
-            # Query historical sales data from base_data
-            query = f"""
+            query = text("""
                 SELECT 
                     sales_date,
                     product_sku,
@@ -514,11 +519,12 @@ async def get_analysis_historical_sales(sku: str = Query(..., description="Produ
                     EXTRACT(YEAR FROM sales_date) as year,
                     EXTRACT(MONTH FROM sales_date) as month
                 FROM base_data
-                WHERE product_sku ILIKE '%{sku}%'
+                WHERE product_sku ILIKE :sku_pattern
                 ORDER BY sales_date ASC
-            """
+            """)
             
-            df = pd.read_sql(query, engine)
+            # Execute with proper parameter binding
+            df = pd.read_sql(query, engine, params={"sku_pattern": f"%{sku}%"})
             
             if df.empty:
                 print(f"[Backend] No historical data found for SKU: {sku}")

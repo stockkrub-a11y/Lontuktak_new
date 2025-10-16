@@ -61,7 +61,7 @@ export default function StocksPage() {
       const params = new URLSearchParams()
       if (searchQuery) params.append("search", searchQuery)
       if (selectedCategory) params.append("category", selectedCategory)
-      if (selectedFlag) params.append("flag", selectedFlag)
+      if (selectedFlag) params.append("status", selectedFlag)
       if (sortBy) params.append("sort_by", sortBy)
 
       const response = await fetch(
@@ -69,14 +69,16 @@ export default function StocksPage() {
       )
       const data = await response.json()
 
+      console.log("[v0] Stock levels response:", data)
+
       if (data.success) {
         const mapped = data.data.map((item: any, index: number) => ({
           id: index + 1,
           name: item.product_name,
-          quantity: item.stock_level,
+          quantity: item.quantity || item.stock_level || 0,
           category: item.category || "Uncategorized",
-          flag: item.flag || "stage",
-          flagColor: getFlagColor(item.flag || "stage"),
+          flag: item.status || item.flag || "stage",
+          flagColor: getFlagColor(item.status || item.flag || "stage"),
         }))
         setStockItems(mapped)
         setBackendConnected(true)
@@ -95,8 +97,9 @@ export default function StocksPage() {
     try {
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/stock/categories`)
       const data = await response.json()
+      console.log("[v0] Categories response:", data)
       if (data.success) {
-        setCategories(data.data)
+        setCategories(data.data || data.categories || [])
       }
     } catch (error) {
       console.error("[v0] Failed to fetch categories:", error)
