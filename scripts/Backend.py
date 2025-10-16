@@ -324,6 +324,33 @@ async def get_stock_levels(
         traceback.print_exc()
         return {"success": False, "data": [], "error": str(e)}
 
+@app.get("/stock/categories")
+async def get_stock_categories():
+    """Get unique stock categories from base_stock"""
+    try:
+        print("[Backend] Fetching stock categories...")
+        
+        if not engine:
+            return {"success": False, "categories": []}
+        
+        try:
+            query = 'SELECT DISTINCT "หมวดหมู่" as category FROM base_stock WHERE "หมวดหมู่" IS NOT NULL'
+            df = pd.read_sql(query, engine)
+            
+            if not df.empty:
+                categories = df['category'].tolist()
+                print(f"[Backend] ✅ Found {len(categories)} categories")
+                return {"success": True, "categories": categories}
+            else:
+                return {"success": True, "categories": []}
+        except Exception as db_error:
+            print(f"[Backend] Error fetching categories: {str(db_error)}")
+            return {"success": True, "categories": []}
+        
+    except Exception as e:
+        print(f"[Backend] ❌ Error in get_stock_categories: {str(e)}")
+        return {"success": False, "categories": []}
+
 # ============================================================================
 # ANALYSIS ENDPOINTS
 # ============================================================================
@@ -402,6 +429,200 @@ async def get_dashboard_analytics():
             },
             "error": str(e)
         }
+
+# ============================================================================
+# TRAIN AND PREDICT ENDPOINTS
+# ============================================================================
+
+@app.post("/train")
+async def train_model(
+    product_file: UploadFile = File(...),
+    sales_file: UploadFile = File(...)
+):
+    """Train the forecasting model with product and sales data"""
+    try:
+        print("[Backend] Starting model training...")
+        
+        if not engine:
+            raise HTTPException(status_code=500, detail="Database not available")
+        
+        # Read uploaded files
+        product_content = await product_file.read()
+        sales_content = await sales_file.read()
+        
+        print(f"[Backend] Product file: {product_file.filename}")
+        print(f"[Backend] Sales file: {sales_file.filename}")
+        
+        # Load data into DataFrames
+        df_product = pd.read_excel(io.BytesIO(product_content))
+        df_sales = pd.read_excel(io.BytesIO(sales_content))
+        
+        print(f"[Backend] Product data: {len(df_product)} rows")
+        print(f"[Backend] Sales data: {len(df_sales)} rows")
+        
+        # Clean the data
+        print("[Backend] Cleaning data...")
+        df_product_clean, df_sales_clean = auto_cleaning(df_product, df_sales)
+        
+        print(f"[Backend] Cleaned product data: {len(df_product_clean)} rows")
+        print(f"[Backend] Cleaned sales data: {len(df_sales_clean)} rows")
+        
+        # Save to database
+        print("[Backend] Saving to database...")
+        
+        # Clear existing data
+        with engine.begin() as conn:
+            conn.execute(text("DELETE FROM base_product"))
+            conn.execute(text("DELETE FROM base_data"))
+        
+        # Save cleaned data
+        df_product_clean.to_sql('base_product', engine, if_exists='append', index=False)
+        df_sales_clean.to_sql('base_data', engine, if_exists='append', index=False)
+        
+        print("[Backend] Data saved to database")
+        
+        # Train the model
+        print("[Backend] Training forecasting model...")
+        update_model_and_train()
+        
+        print("[Backend] ✅ Model training completed successfully")
+        
+        return {
+            "success": True,
+            "message": "Model trained successfully",
+            "product_rows": len(df_product_clean),
+            "sales_rows": len(df_sales_clean)
+        }
+        
+    except Exception as e:
+        print(f"[Backend] ❌ Error in train_model: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/predict/existing")
+async def get_existing_forecasts():
+    """Get existing forecast data from the forecasts table"""
+    try:
+        print("[Backend] Fetching existing forecasts...")
+        
+        if not engine:
+            return {"success": False, "data": []}
+        
+        try:
+            query = """
+                SELECT 
+                    product_name,
+                    product_sku,
+                    category,
+                    current_stock,
+                    predicted_demand,
+                    recommended_order,
+                    confidence_score,
+                    forecast_date,
+                    created_at
+                FROM forecasts
+                ORDER BY created_at DESC
+            """
+            df = pd.read_sql(query, engine)
+            
+            if not df.empty:
+                print(f"[Backend] ✅ Retrieved {len(df)} forecasts")
+                # Convert datetime to string
+                for idx, row in df.iterrows():
+                    if 'forecast_date' in df.columns and pd.notna(row['forecast_date']):
+                        df.at[idx, 'forecast_date'] = str(row['forecast_date'])
+                    if 'created_at' in df.columns and pd.notna(row['created_at']):
+                        df.at[idx, 'created_at'] = str(row['created_at'])
+                
+                return {"success": True, "data": df.to_dict('records')}
+            else:
+                print("[Backend] No forecasts found")
+                return {"success": True, "data": []}
+                
+        except Exception as db_error:
+            print(f"[Backend] Forecasts table doesn't exist or query failed: {str(db_error)}")
+            return {"success": True, "data": []}
+        
+    except Exception as e:
+        print(f"[Backend] ❌ Error fetching forecasts: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return {"success": False, "data": [], "error": str(e)}
+
+@app.post("/predict/generate")
+async def generate_forecasts():
+    """Generate new forecasts based on trained model"""
+    try:
+        print("[Backend] Generating forecasts...")
+        
+        if not engine:
+            raise HTTPException(status_code=500, detail="Database not available")
+        
+        # Check if model is trained (base_data exists)
+        try:
+            check_query = "SELECT COUNT(*) as count FROM base_data"
+            result = pd.read_sql(check_query, engine)
+            if result.iloc[0]['count'] == 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail="No training data available. Please train the model first."
+                )
+        except Exception as e:
+            raise HTTPException(
+                status_code=400,
+                detail="Model not trained. Please upload and train with data first."
+            )
+        
+        # Run forecast loop
+        print("[Backend] Running forecast loop...")
+        forecast_results = forcast_loop()
+        
+        # Save forecasts to database
+        print("[Backend] Saving forecasts to database...")
+        forecast_df = pd.DataFrame(forecast_results)
+        forecast_df['created_at'] = datetime.now()
+        
+        # Clear old forecasts and insert new ones
+        with engine.begin() as conn:
+            conn.execute(text("DELETE FROM forecasts"))
+        
+        forecast_df.to_sql('forecasts', engine, if_exists='append', index=False)
+        
+        print(f"[Backend] ✅ Generated {len(forecast_results)} forecasts")
+        
+        return {
+            "success": True,
+            "message": "Forecasts generated successfully",
+            "forecast_count": len(forecast_results)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[Backend] ❌ Error generating forecasts: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/predict/clear")
+async def clear_forecasts():
+    """Clear all forecast data"""
+    try:
+        print("[Backend] Clearing forecasts...")
+        
+        if not engine:
+            raise HTTPException(status_code=500, detail="Database not available")
+        
+        with engine.begin() as conn:
+            conn.execute(text("DELETE FROM forecasts"))
+        
+        print("[Backend] ✅ Forecasts cleared")
+        return {"success": True, "message": "Forecasts cleared successfully"}
+        
+    except Exception as e:
+        print(f"[Backend] ❌ Error clearing forecasts: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 # ============================================================================
 # RUN SERVER
