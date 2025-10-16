@@ -505,15 +505,32 @@ async def train_model(
                 
                 try:
                     print("[Backend] Attempting to generate forecasts...")
-                    forecast_results = forcast_loop()
+                    long_forecast, forecast_results = forcast_loop(X_train, y_train, df_window_raw, product_sku_last, base_model)
                     
                     if forecast_results and len(forecast_results) > 0:
                         # Save forecasts to database
                         forecast_df = pd.DataFrame(forecast_results)
                         forecast_df['created_at'] = datetime.now()
                         
-                        with engine.begin() as conn:
-                            conn.execute(text("DELETE FROM forecasts"))
+                        try:
+                            with engine.begin() as conn:
+                                conn.execute(text("DELETE FROM forecasts"))
+                        except:
+                            # Table might not exist, create it
+                            print("[Backend] Creating forecasts table...")
+                            create_forecasts_table = """
+                                CREATE TABLE IF NOT EXISTS forecasts (
+                                    id SERIAL PRIMARY KEY,
+                                    product_sku VARCHAR(255),
+                                    forecast_date DATE,
+                                    predicted_sales INTEGER,
+                                    current_sales INTEGER,
+                                    current_date_col DATE,
+                                    created_at TIMESTAMP
+                                )
+                            """
+                            with engine.begin() as conn:
+                                conn.execute(text(create_forecasts_table))
                         
                         forecast_df.to_sql('forecasts', engine, if_exists='append', index=False)
                         
@@ -526,10 +543,14 @@ async def train_model(
                         
                 except Exception as forecast_error:
                     print(f"[Backend] ⚠️ Forecast generation failed: {str(forecast_error)}")
+                    import traceback
+                    traceback.print_exc()
                     response["ml_training"]["message"] = f"Model trained but forecast generation failed: {str(forecast_error)}"
                 
             except Exception as train_error:
                 print(f"[Backend] ❌ Model training failed: {str(train_error)}")
+                import traceback
+                traceback.print_exc()
                 response["ml_training"] = {
                     "status": "failed",
                     "message": f"Training failed: {str(train_error)}"
@@ -564,17 +585,14 @@ async def get_existing_forecasts():
         try:
             query = """
                 SELECT 
-                    product_name,
                     product_sku,
-                    category,
-                    current_stock,
-                    predicted_demand,
-                    recommended_order,
-                    confidence_score,
                     forecast_date,
+                    predicted_sales,
+                    current_sales,
+                    current_date_col,
                     created_at
                 FROM forecasts
-                ORDER BY created_at DESC
+                ORDER BY created_at DESC, product_sku ASC
             """
             df = pd.read_sql(query, engine)
             
@@ -584,6 +602,8 @@ async def get_existing_forecasts():
                 for idx, row in df.iterrows():
                     if 'forecast_date' in df.columns and pd.notna(row['forecast_date']):
                         df.at[idx, 'forecast_date'] = str(row['forecast_date'])
+                    if 'current_date_col' in df.columns and pd.notna(row['current_date_col']):
+                        df.at[idx, 'current_date_col'] = str(row['current_date_col'])
                     if 'created_at' in df.columns and pd.notna(row['created_at']):
                         df.at[idx, 'created_at'] = str(row['created_at'])
                 
@@ -626,9 +646,29 @@ async def generate_forecasts():
                 detail="Model not trained. Please upload and train with data first."
             )
         
-        # Run forecast loop
+        print("[Backend] Loading trained model and data...")
+        import joblib
+        
+        if not os.path.exists("xgb_sales_model.pkl"):
+            raise HTTPException(
+                status_code=400,
+                detail="Model file not found. Please train the model first."
+            )
+        
+        # Load model
+        base_model = joblib.load("xgb_sales_model.pkl")
+        
+        # Get the latest training data from base_data
+        query = "SELECT * FROM base_data ORDER BY sales_date DESC"
+        df_cleaned = pd.read_sql(query, engine)
+        
+        # Recreate the training data
+        from Predict import update_model_and_train
+        df_window_raw, df_window, _, X_train, y_train, X_test, y_test, product_sku_last = update_model_and_train(df_cleaned)
+        
+        # Run forecast loop with proper parameters
         print("[Backend] Running forecast loop...")
-        forecast_results = forcast_loop()
+        long_forecast, forecast_results = forcast_loop(X_train, y_train, df_window_raw, product_sku_last, base_model)
         
         # Save forecasts to database
         print("[Backend] Saving forecasts to database...")
