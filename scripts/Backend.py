@@ -60,11 +60,12 @@ async def get_notifications():
         
         try:
             print("[Backend] Querying stock_notifications table...")
-            # First, let's check what columns exist in the table
+            
             check_columns_query = """
                 SELECT column_name 
                 FROM information_schema.columns 
                 WHERE table_name = 'stock_notifications'
+                ORDER BY ordinal_position
             """
             columns_df = pd.read_sql(check_columns_query, engine)
             print(f"[Backend] Available columns in stock_notifications: {columns_df['column_name'].tolist()}")
@@ -79,7 +80,7 @@ async def get_notifications():
             
             print(f"[Backend] Query returned {len(df)} rows")
             if not df.empty:
-                print(f"[Backend] Column names: {df.columns.tolist()}")
+                print(f"[Backend] Actual column names from query: {df.columns.tolist()}")
                 print(f"[Backend] First row sample: {df.iloc[0].to_dict()}")
                 
                 # Convert to list of dicts
