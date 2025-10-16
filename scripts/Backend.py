@@ -81,7 +81,6 @@ async def get_notifications():
             if not df.empty:
                 print(f"[Backend] ✅ Retrieved {len(df)} notifications from database")
                 notifications = df.to_dict('records')
-                # Convert datetime to string for JSON serialization
                 for notification in notifications:
                     if 'created_at' in notification and notification['created_at']:
                         notification['created_at'] = str(notification['created_at'])
@@ -580,7 +579,7 @@ async def get_existing_forecasts():
         print("[Backend] Fetching existing forecasts...")
         
         if not engine:
-            return {"success": False, "data": []}
+            return {"success": False, "forecast": []}
         
         try:
             query = """
@@ -598,7 +597,6 @@ async def get_existing_forecasts():
             
             if not df.empty:
                 print(f"[Backend] ✅ Retrieved {len(df)} forecasts")
-                # Convert datetime to string
                 for idx, row in df.iterrows():
                     if 'forecast_date' in df.columns and pd.notna(row['forecast_date']):
                         df.at[idx, 'forecast_date'] = str(row['forecast_date'])
@@ -607,20 +605,20 @@ async def get_existing_forecasts():
                     if 'created_at' in df.columns and pd.notna(row['created_at']):
                         df.at[idx, 'created_at'] = str(row['created_at'])
                 
-                return {"success": True, "data": df.to_dict('records')}
+                return {"success": True, "forecast": df.to_dict('records')}
             else:
                 print("[Backend] No forecasts found")
-                return {"success": True, "data": []}
+                return {"success": True, "forecast": []}
                 
         except Exception as db_error:
             print(f"[Backend] Forecasts table doesn't exist or query failed: {str(db_error)}")
-            return {"success": True, "data": []}
+            return {"success": True, "forecast": []}
         
     except Exception as e:
         print(f"[Backend] ❌ Error fetching forecasts: {str(e)}")
         import traceback
         traceback.print_exc()
-        return {"success": False, "data": [], "error": str(e)}
+        return {"success": False, "forecast": [], "error": str(e)}
 
 @app.post("/predict/generate")
 async def generate_forecasts():
@@ -675,9 +673,25 @@ async def generate_forecasts():
         forecast_df = pd.DataFrame(forecast_results)
         forecast_df['created_at'] = datetime.now()
         
-        # Clear old forecasts and insert new ones
-        with engine.begin() as conn:
-            conn.execute(text("DELETE FROM forecasts"))
+        try:
+            with engine.begin() as conn:
+                conn.execute(text("DELETE FROM forecasts"))
+        except:
+            # Table might not exist, create it
+            print("[Backend] Creating forecasts table...")
+            create_forecasts_table = """
+                CREATE TABLE IF NOT EXISTS forecasts (
+                    id SERIAL PRIMARY KEY,
+                    product_sku VARCHAR(255),
+                    forecast_date DATE,
+                    predicted_sales INTEGER,
+                    current_sales INTEGER,
+                    current_date_col DATE,
+                    created_at TIMESTAMP
+                )
+            """
+            with engine.begin() as conn:
+                conn.execute(text(create_forecasts_table))
         
         forecast_df.to_sql('forecasts', engine, if_exists='append', index=False)
         
@@ -686,7 +700,8 @@ async def generate_forecasts():
         return {
             "success": True,
             "message": "Forecasts generated successfully",
-            "forecast_count": len(forecast_results)
+            "forecast_count": len(forecast_results),
+            "forecast": forecast_results
         }
         
     except HTTPException:
