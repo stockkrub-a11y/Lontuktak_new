@@ -82,6 +82,111 @@ async def test_endpoint():
     sys.stdout.flush()
     return {"message": "Backend is working!", "timestamp": datetime.now().isoformat()}
 
+@app.get("/api/db-test")
+async def test_database():
+    """Test database connection and query stock_notifications table"""
+    print("\n" + "="*80, flush=True)
+    print("DATABASE TEST ENDPOINT CALLED", flush=True)
+    print("="*80, flush=True)
+    sys.stdout.flush()
+    
+    result = {
+        "engine_available": engine is not None,
+        "connection_test": False,
+        "table_exists": False,
+        "row_count": 0,
+        "sample_data": None,
+        "columns": [],
+        "error": None
+    }
+    
+    try:
+        if not engine:
+            result["error"] = "Database engine is None"
+            print("ERROR: Database engine is None", flush=True)
+            sys.stdout.flush()
+            return result
+        
+        # Test 1: Simple connection test
+        print("Test 1: Testing database connection...", flush=True)
+        sys.stdout.flush()
+        test_query = "SELECT 1 as test"
+        test_df = pd.read_sql(test_query, engine)
+        result["connection_test"] = True
+        print("✅ Database connection successful", flush=True)
+        sys.stdout.flush()
+        
+        # Test 2: Check if table exists
+        print("Test 2: Checking if stock_notifications table exists...", flush=True)
+        sys.stdout.flush()
+        table_check_query = """
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_name = 'stock_notifications'
+            ) as table_exists
+        """
+        table_check_df = pd.read_sql(table_check_query, engine)
+        result["table_exists"] = bool(table_check_df.iloc[0]['table_exists'])
+        print(f"Table exists: {result['table_exists']}", flush=True)
+        sys.stdout.flush()
+        
+        if not result["table_exists"]:
+            result["error"] = "stock_notifications table does not exist"
+            return result
+        
+        # Test 3: Count rows
+        print("Test 3: Counting rows in stock_notifications...", flush=True)
+        sys.stdout.flush()
+        count_query = "SELECT COUNT(*) as count FROM stock_notifications"
+        count_df = pd.read_sql(count_query, engine)
+        result["row_count"] = int(count_df.iloc[0]['count'])
+        print(f"✅ Row count: {result['row_count']}", flush=True)
+        sys.stdout.flush()
+        
+        # Test 4: Get column names
+        print("Test 4: Getting column names...", flush=True)
+        sys.stdout.flush()
+        columns_query = """
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'stock_notifications'
+            ORDER BY ordinal_position
+        """
+        columns_df = pd.read_sql(columns_query, engine)
+        result["columns"] = columns_df['column_name'].tolist()
+        print(f"✅ Columns: {result['columns']}", flush=True)
+        sys.stdout.flush()
+        
+        # Test 5: Get sample data
+        if result["row_count"] > 0:
+            print("Test 5: Fetching sample data...", flush=True)
+            sys.stdout.flush()
+            sample_query = "SELECT * FROM stock_notifications LIMIT 3"
+            sample_df = pd.read_sql(sample_query, engine)
+            
+            # Convert to dict and handle datetime
+            sample_records = sample_df.to_dict('records')
+            for record in sample_records:
+                for key, value in record.items():
+                    if pd.notna(value) and isinstance(value, (pd.Timestamp, datetime)):
+                        record[key] = str(value)
+            
+            result["sample_data"] = sample_records
+            print(f"✅ Sample data retrieved: {len(sample_records)} rows", flush=True)
+            sys.stdout.flush()
+        
+        print("="*80 + "\n", flush=True)
+        sys.stdout.flush()
+        return result
+        
+    except Exception as e:
+        result["error"] = str(e)
+        print(f"ERROR in database test: {str(e)}", flush=True)
+        import traceback
+        traceback.print_exc()
+        sys.stdout.flush()
+        return result
+
 # ============================================================================
 # NOTIFICATIONS ENDPOINTS
 # ============================================================================
