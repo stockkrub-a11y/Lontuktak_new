@@ -212,12 +212,12 @@ async def upload_stock_files(
         # Update base_stock with current stock
         print("[Backend] Updating base_stock table...")
         base_stock_df = pd.DataFrame({
-            'product_name': df_curr.get('product_name', df_curr.iloc[:, 0]),
+            'product_name': df_curr['product_name'],
             'product_sku': df_curr.get('product_sku', ''),
-            'stock_level': df_curr.get('stock', df_curr.get('Stock', 0)),
-            'หมวดหมู่': df_curr.get('หมวดหมู่', df_curr.get('category', '')),
-            'unchanged_counter': report_df['unchanged_counter'],
-            'flag': report_df['flag'],
+            'stock_level': df_curr['stock_level'],
+            'หมวดหมู่': df_curr.get('หมวดหมู่', ''),
+            'unchanged_counter': report_df['unchanged_counter'].values,
+            'flag': report_df['flag'].values,
             'updated_at': datetime.now()
         })
         
