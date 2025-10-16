@@ -479,7 +479,7 @@ async def train_model(
             
             # Train the model
             print("[Backend] Training forecasting model...")
-            update_model_and_train()
+            df_window_raw, df_window, base_model, X_train, y_train, X_test, y_test, product_sku_last = update_model_and_train(df_cleaned)
             
             print("[Backend] ✅ Model training completed successfully")
             
