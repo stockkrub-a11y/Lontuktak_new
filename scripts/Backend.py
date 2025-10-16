@@ -60,30 +60,37 @@ async def get_notifications():
         
         try:
             print("[Backend] Querying stock_notifications table...")
+            # First, let's check what columns exist in the table
+            check_columns_query = """
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'stock_notifications'
+            """
+            columns_df = pd.read_sql(check_columns_query, engine)
+            print(f"[Backend] Available columns in stock_notifications: {columns_df['column_name'].tolist()}")
+            
             query = """
-                SELECT 
-                    "Product",
-                    "Stock",
-                    "Last_Stock",
-                    "Decrease_Rate(%)",
-                    "Weeks_To_Empty",
-                    "MinStock",
-                    "Buffer",
-                    "Reorder_Qty",
-                    "Status",
-                    "Description",
-                    created_at
+                SELECT *
                 FROM stock_notifications
                 ORDER BY created_at DESC
+                LIMIT 100
             """
             df = pd.read_sql(query, engine)
             
+            print(f"[Backend] Query returned {len(df)} rows")
             if not df.empty:
-                print(f"[Backend] ✅ Retrieved {len(df)} notifications from database")
+                print(f"[Backend] Column names: {df.columns.tolist()}")
+                print(f"[Backend] First row sample: {df.iloc[0].to_dict()}")
+                
+                # Convert to list of dicts
                 notifications = df.to_dict('records')
+                
+                # Convert datetime to string
                 for notification in notifications:
                     if 'created_at' in notification and notification['created_at']:
                         notification['created_at'] = str(notification['created_at'])
+                
+                print(f"[Backend] ✅ Returning {len(notifications)} notifications")
                 return notifications
             else:
                 print("[Backend] No notifications in database")

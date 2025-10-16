@@ -85,6 +85,11 @@ export default function NotificationsPage() {
         console.log("[v0] Received data:", data)
         console.log("[v0] Data type:", typeof data)
         console.log("[v0] Is array:", Array.isArray(data))
+        console.log("[v0] Data length:", Array.isArray(data) ? data.length : "N/A")
+        if (Array.isArray(data) && data.length > 0) {
+          console.log("[v0] First item:", data[0])
+          console.log("[v0] First item keys:", Object.keys(data[0]))
+        }
 
         if (!Array.isArray(data)) {
           console.error("[v0] Data is not an array:", data)
@@ -93,6 +98,8 @@ export default function NotificationsPage() {
         }
 
         const mapped: Notification[] = data.map((item, index) => {
+          console.log(`[v0] Mapping item ${index}:`, item)
+
           const status: NotificationStatus =
             item.Status === "Red" ? "critical" : item.Status === "Yellow" ? "warning" : "safe"
 
@@ -116,6 +123,7 @@ export default function NotificationsPage() {
             recommendedRestock: item.Reorder_Qty,
           }
         })
+        console.log("[v0] Mapped notifications:", mapped.length)
         setNotifications(mapped)
       } catch (error) {
         console.error("[v0] Failed to fetch notifications:", error)
