@@ -8,6 +8,7 @@ import { predictSales } from "@/lib/api"
 interface ForecastData {
   sku: string
   forecastDate: string
+  forecastDateRaw: Date
   predictedSales: string
   currentSale: string
   currentDate: string
@@ -35,20 +36,24 @@ export default function PredictPage() {
         console.log("[v0] Forecast data received:", data)
 
         if (data.forecast && data.forecast.length > 0) {
-          const mapped: ForecastData[] = data.forecast.map((item) => ({
-            sku: item.product_sku,
-            forecastDate: new Date(item.forecast_date).toLocaleDateString("en-US", {
-              month: "short",
-              year: "2-digit",
-            }),
-            predictedSales: Math.round(item.predicted_sales).toString(),
-            currentSale: Math.round(item.current_sales).toString(),
-            currentDate: new Date(item.current_date_col).toLocaleDateString("en-US", {
-              month: "short",
-              day: "numeric",
-              year: "numeric",
-            }),
-          }))
+          const mapped: ForecastData[] = data.forecast.map((item) => {
+            const forecastDate = new Date(item.forecast_date)
+            return {
+              sku: item.product_sku,
+              forecastDate: forecastDate.toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
+              forecastDateRaw: forecastDate,
+              predictedSales: Math.round(item.predicted_sales).toString(),
+              currentSale: Math.round(item.current_sales).toString(),
+              currentDate: new Date(item.current_date_col).toLocaleDateString("en-US", {
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+              }),
+            }
+          })
+
+          mapped.sort((a, b) => a.forecastDateRaw.getTime() - b.forecastDateRaw.getTime())
+
           setForecastData(mapped)
           console.log("[v0] Loaded", mapped.length, "forecast records")
         } else {
@@ -99,17 +104,24 @@ export default function PredictPage() {
     predictSales(months)
       .then((response) => {
         console.log("[v0] Prediction completed:", response)
-        const mapped: ForecastData[] = response.forecast.map((item) => ({
-          sku: item.product_sku,
-          forecastDate: new Date(item.forecast_date).toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
-          predictedSales: Math.round(item.predicted_sales).toString(),
-          currentSale: Math.round(item.current_sales).toString(),
-          currentDate: new Date(item.current_date_col).toLocaleDateString("en-US", {
-            month: "short",
-            day: "numeric",
-            year: "numeric",
-          }),
-        }))
+        const mapped: ForecastData[] = response.forecast.map((item) => {
+          const forecastDate = new Date(item.forecast_date)
+          return {
+            sku: item.product_sku,
+            forecastDate: forecastDate.toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
+            forecastDateRaw: forecastDate,
+            predictedSales: Math.round(item.predicted_sales).toString(),
+            currentSale: Math.round(item.current_sales).toString(),
+            currentDate: new Date(item.current_date_col).toLocaleDateString("en-US", {
+              month: "short",
+              day: "numeric",
+              year: "numeric",
+            }),
+          }
+        })
+
+        mapped.sort((a, b) => a.forecastDateRaw.getTime() - b.forecastDateRaw.getTime())
+
         setForecastData(mapped)
       })
       .catch((error) => {

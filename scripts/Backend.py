@@ -435,6 +435,50 @@ async def get_dashboard_analytics():
             "error": str(e)
         }
 
+@app.get("/analysis/base_skus")
+async def get_analysis_base_skus(search: str = Query("", description="Search term for base SKUs")):
+    """Get unique base SKUs from base_data for analysis"""
+    try:
+        print(f"[Backend] Fetching base SKUs with search: '{search}'")
+        
+        if not engine:
+            return {"success": False, "base_skus": [], "total": 0}
+        
+        try:
+            # Get unique base SKUs from base_data
+            query = """
+                SELECT DISTINCT product_sku
+                FROM base_data
+                WHERE product_sku IS NOT NULL
+            """
+            
+            if search:
+                query += f" AND product_sku ILIKE '%{search}%'"
+            
+            query += " ORDER BY product_sku ASC LIMIT 100"
+            
+            df = pd.read_sql(query, engine)
+            
+            if not df.empty:
+                base_skus = df['product_sku'].tolist()
+                print(f"[Backend] ✅ Found {len(base_skus)} base SKUs")
+                return {"success": True, "base_skus": base_skus, "total": len(base_skus)}
+            else:
+                print("[Backend] No base SKUs found")
+                return {"success": True, "base_skus": [], "total": 0}
+                
+        except Exception as db_error:
+            print(f"[Backend] Database query failed: {str(db_error)}")
+            import traceback
+            traceback.print_exc()
+            return {"success": False, "base_skus": [], "total": 0}
+        
+    except Exception as e:
+        print(f"[Backend] ❌ Error fetching base SKUs: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return {"success": False, "base_skus": [], "total": 0}
+
 # ============================================================================
 # TRAIN AND PREDICT ENDPOINTS
 # ============================================================================
@@ -591,7 +635,7 @@ async def get_existing_forecasts():
                     current_date_col,
                     created_at
                 FROM forecasts
-                ORDER BY created_at DESC, product_sku ASC
+                ORDER BY forecast_date ASC, product_sku ASC
             """
             df = pd.read_sql(query, engine)
             
