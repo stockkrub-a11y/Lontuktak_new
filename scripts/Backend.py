@@ -212,12 +212,12 @@ async def upload_stock_files(
         # Update base_stock with current stock
         print("[Backend] Updating base_stock table...")
         base_stock_df = pd.DataFrame({
-            'product_name': df_curr['product_name'],
+            'product_name': df_curr.get('product_name', df_curr.iloc[:, 0]),
             'product_sku': df_curr.get('product_sku', ''),
-            'stock_level': df_curr['stock_level'],
-            'หมวดหมู่': df_curr.get('หมวดหมู่', ''),
-            'unchanged_counter': report_df['unchanged_counter'].values,
-            'flag': report_df['flag'].values,
+            'stock_level': df_curr.get('stock', df_curr.get('Stock', 0)),
+            'หมวดหมู่': df_curr.get('หมวดหมู่', df_curr.get('category', '')),
+            'unchanged_counter': report_df['unchanged_counter'],
+            'flag': report_df['flag'],
             'updated_at': datetime.now()
         })
         
@@ -402,71 +402,6 @@ async def get_dashboard_analytics():
             },
             "error": str(e)
         }
-
-# ============================================================================
-# TRAIN ENDPOINT
-# ============================================================================
-
-@app.post("/train")
-async def train_model(
-    sales_file: UploadFile = File(...),
-    product_file: Optional[UploadFile] = File(None)
-):
-    """Train the forecasting model with sales and product data"""
-    try:
-        print("[Backend] Starting model training...")
-        
-        # Read sales file
-        sales_content = await sales_file.read()
-        df_sales = pd.read_excel(io.BytesIO(sales_content))
-        print(f"[Backend] Sales file loaded: {len(df_sales)} rows")
-        
-        # Read product file if provided
-        df_product = None
-        if product_file:
-            product_content = await product_file.read()
-            df_product = pd.read_excel(io.BytesIO(product_content))
-            print(f"[Backend] Product file loaded: {len(df_product)} rows")
-        
-        # Clean the data
-        print("[Backend] Cleaning data...")
-        df_cleaned = auto_cleaning(df_sales, df_product)
-        print(f"[Backend] Data cleaned: {len(df_cleaned)} rows")
-        
-        # Save to base_data table
-        print("[Backend] Saving to base_data table...")
-        df_cleaned.to_sql('base_data', engine, if_exists='replace', index=False)
-        
-        # Train the model
-        print("[Backend] Training model...")
-        update_model_and_train()
-        
-        # Generate forecasts
-        print("[Backend] Generating forecasts...")
-        forecast_df = forcast_loop(n_forecast=1)
-        
-        # Save forecasts to database
-        print("[Backend] Saving forecasts...")
-        forecast_df.to_sql('forecasts', engine, if_exists='replace', index=False)
-        
-        # Evaluate model
-        print("[Backend] Evaluating model...")
-        metrics = Evaluate()
-        
-        print("[Backend] ✅ Training completed successfully")
-        return {
-            "success": True,
-            "message": "Model trained successfully",
-            "data_rows": len(df_cleaned),
-            "forecast_rows": len(forecast_df),
-            "metrics": metrics
-        }
-        
-    except Exception as e:
-        print(f"[Backend] ❌ Error in training: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
 
 # ============================================================================
 # RUN SERVER
