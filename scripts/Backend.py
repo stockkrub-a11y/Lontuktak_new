@@ -172,7 +172,8 @@ async def upload_stock_files(
             'จำนวนคงเหลือ': 'stock_level',
             'จำนวน': 'stock_level'
         })
-
+        df_curr["stock_level"] = pd.to_numeric(df_curr["stock_level"], errors='coerce').fillna(0).astype(int)
+        df_prev["stock_level"] = pd.to_numeric(df_prev["stock_level"], errors='coerce').fillna(0).astype(int)
         # Generate stock report
         print("[Backend] Generating stock report...")
         report_df = generate_stock_report(df_prev, df_curr)
