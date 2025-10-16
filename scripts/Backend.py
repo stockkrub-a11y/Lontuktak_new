@@ -324,6 +324,102 @@ async def get_stock_levels(
         traceback.print_exc()
         return {"success": False, "data": [], "error": str(e)}
 
+@app.get("/stock/categories")
+async def get_stock_categories():
+    """Get unique categories from base_stock table"""
+    try:
+        print("[Backend] Fetching stock categories...")
+        
+        if not engine:
+            return {"success": False, "data": []}
+        
+        query = """
+            SELECT DISTINCT "หมวดหมู่" as category
+            FROM base_stock
+            WHERE "หมวดหมู่" IS NOT NULL AND "หมวดหมู่" != ''
+            ORDER BY category
+        """
+        
+        df = pd.read_sql(query, engine)
+        
+        if not df.empty:
+            categories = df['category'].tolist()
+            print(f"[Backend] ✅ Retrieved {len(categories)} categories")
+            return {"success": True, "data": categories}
+        else:
+            print("[Backend] No categories found")
+            return {"success": True, "data": []}
+        
+    except Exception as e:
+        print(f"[Backend] ❌ Error fetching categories: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return {"success": False, "data": [], "error": str(e)}
+
+# ============================================================================
+# TRAINING ENDPOINTS
+# ============================================================================
+
+@app.post("/train")
+async def train_model(
+    sales_file: UploadFile = File(...),
+    product_file: Optional[UploadFile] = File(None)
+):
+    """Train the forecasting model with sales and product data"""
+    try:
+        print("[Backend] Starting model training...")
+        
+        # Read sales file
+        sales_content = await sales_file.read()
+        df_sales = pd.read_excel(io.BytesIO(sales_content))
+        print(f"[Backend] Sales data loaded: {len(df_sales)} rows")
+        
+        # Read product file if provided
+        df_product = None
+        if product_file:
+            product_content = await product_file.read()
+            df_product = pd.read_excel(io.BytesIO(product_content))
+            print(f"[Backend] Product data loaded: {len(df_product)} rows")
+        
+        # Clean the data
+        print("[Backend] Cleaning data...")
+        df_cleaned = auto_cleaning(df_sales, df_product)
+        
+        # Save to database
+        print("[Backend] Saving to base_data table...")
+        df_cleaned.to_sql('base_data', engine, if_exists='replace', index=False)
+        
+        # Train the model
+        print("[Backend] Training forecasting model...")
+        update_model_and_train(df_cleaned)
+        
+        # Generate forecasts
+        print("[Backend] Generating forecasts...")
+        forecast_df = forcast_loop(df_cleaned, n_forecast=3)
+        
+        # Save forecasts to database
+        print("[Backend] Saving forecasts to database...")
+        forecast_df.to_sql('forecasts', engine, if_exists='replace', index=False)
+        
+        # Evaluate model
+        print("[Backend] Evaluating model...")
+        metrics = Evaluate(df_cleaned)
+        
+        print("[Backend] ✅ Training completed successfully")
+        return {
+            "success": True,
+            "message": "Model trained successfully",
+            "data_rows": len(df_cleaned),
+            "forecast_rows": len(forecast_df),
+            "metrics": metrics
+        }
+        
+    except Exception as e:
+        print(f"[Backend] ❌ Error in training: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ============================================================================
 # ANALYSIS ENDPOINTS
 # ============================================================================
