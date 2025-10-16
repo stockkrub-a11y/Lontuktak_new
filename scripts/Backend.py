@@ -163,13 +163,15 @@ async def upload_stock_files(
             'ชื่อสินค้า': 'product_name',
             'รหัสสินค้า': 'product_sku',
             'จำนวนคงเหลือ': 'stock_level',
-            'จำนวน': 'stock_level'
+            'จำนวน': 'stock_level',
+            'หมวดหมู่': 'category'
         })
         df_prev = df_prev.rename(columns={
             'ชื่อสินค้า': 'product_name',
             'รหัสสินค้า': 'product_sku',
             'จำนวนคงเหลือ': 'stock_level',
-            'จำนวน': 'stock_level'
+            'จำนวน': 'stock_level',
+            'หมวดหมู่': 'category'
         })
         df_curr["stock_level"] = pd.to_numeric(df_curr["stock_level"], errors='coerce').fillna(0).astype(int)
         df_prev["stock_level"] = pd.to_numeric(df_prev["stock_level"], errors='coerce').fillna(0).astype(int)
@@ -177,6 +179,9 @@ async def upload_stock_files(
         print("[Backend] Generating stock report...")
         report_df = generate_stock_report(df_prev, df_curr)
         print(f"[Backend] Report generated: {len(report_df)} items")
+        
+        report_df['unchanged_counter'] = 0
+        report_df['flag'] = 'stage'
         
         # Calculate flags based on stock changes
         print("[Backend] Calculating stock flags...")
@@ -214,17 +219,27 @@ async def upload_stock_files(
         report_df['created_at'] = datetime.now()
         report_df.to_sql('stock_notifications', engine, if_exists='append', index=False)
         
-        # Update base_stock with current stock
         print("[Backend] Updating base_stock table...")
-        base_stock_df = pd.DataFrame({
-            'product_name': df_curr['product_name'],
-            'product_sku': df_curr.get('product_sku', ''),
-            'stock_level': df_curr['stock_level'],
-            'หมวดหมู่': df_curr.get('หมวดหมู่', ''),
-            'unchanged_counter': report_df['unchanged_counter'].values,
-            'flag': report_df['flag'].values,
-            'updated_at': datetime.now()
-        })
+        
+        # Create a mapping of product names to their flags
+        flag_map = dict(zip(report_df['Product'], report_df['flag']))
+        counter_map = dict(zip(report_df['Product'], report_df['unchanged_counter']))
+        
+        # Build base_stock_df with proper alignment
+        base_stock_data = []
+        for idx, row in df_curr.iterrows():
+            product_name = row.get('product_name', '')
+            base_stock_data.append({
+                'product_name': product_name,
+                'product_sku': row.get('product_sku', ''),
+                'stock_level': row.get('stock_level', 0),
+                'หมวดหมู่': row.get('category', ''),
+                'unchanged_counter': counter_map.get(product_name, 0),
+                'flag': flag_map.get(product_name, 'stage'),
+                'updated_at': datetime.now()
+            })
+        
+        base_stock_df = pd.DataFrame(base_stock_data)
         
         # Clear and insert new data
         with engine.begin() as conn:
@@ -479,6 +494,90 @@ async def get_analysis_base_skus(search: str = Query("", description="Search ter
         traceback.print_exc()
         return {"success": False, "base_skus": [], "total": 0}
 
+@app.get("/analysis/historical")
+async def get_analysis_historical_sales(sku: str = Query(..., description="Product SKU to analyze")):
+    """Get historical sales data for a specific SKU"""
+    try:
+        print(f"[Backend] Fetching historical sales for SKU: {sku}")
+        
+        if not engine:
+            return {"success": False, "message": "Database not available", "chart_data": [], "table_data": [], "sizes": []}
+        
+        try:
+            # Query historical sales data from base_data
+            query = f"""
+                SELECT 
+                    sales_date,
+                    product_sku,
+                    quantity,
+                    total_amount_baht,
+                    EXTRACT(YEAR FROM sales_date) as year,
+                    EXTRACT(MONTH FROM sales_date) as month
+                FROM base_data
+                WHERE product_sku ILIKE '%{sku}%'
+                ORDER BY sales_date ASC
+            """
+            
+            df = pd.read_sql(query, engine)
+            
+            if df.empty:
+                print(f"[Backend] No historical data found for SKU: {sku}")
+                return {
+                    "success": True,
+                    "message": "No data found for this SKU",
+                    "chart_data": [],
+                    "table_data": [],
+                    "sizes": []
+                }
+            
+            print(f"[Backend] ✅ Retrieved {len(df)} historical sales records")
+            
+            # Prepare chart data (monthly aggregation)
+            df['month_year'] = df['sales_date'].dt.to_period('M').astype(str)
+            chart_data = df.groupby('month_year').agg({
+                'quantity': 'sum',
+                'total_amount_baht': 'sum'
+            }).reset_index()
+            
+            # Prepare table data
+            table_data = df[['sales_date', 'product_sku', 'quantity', 'total_amount_baht']].copy()
+            table_data['sales_date'] = table_data['sales_date'].astype(str)
+            
+            # Get unique sizes/variants
+            sizes = df['product_sku'].unique().tolist()
+            
+            return {
+                "success": True,
+                "message": "Historical sales data retrieved successfully",
+                "chart_data": chart_data.to_dict('records'),
+                "table_data": table_data.to_dict('records'),
+                "sizes": sizes
+            }
+            
+        except Exception as db_error:
+            print(f"[Backend] Database query failed: {str(db_error)}")
+            import traceback
+            traceback.print_exc()
+            return {
+                "success": False,
+                "message": f"Database error: {str(db_error)}",
+                "chart_data": [],
+                "table_data": [],
+                "sizes": []
+            }
+        
+    except Exception as e:
+        print(f"[Backend] ❌ Error fetching historical sales: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return {
+            "success": False,
+            "message": f"Error: {str(e)}",
+            "chart_data": [],
+            "table_data": [],
+            "sizes": []
+        }
+
 # ============================================================================
 # TRAIN AND PREDICT ENDPOINTS
 # ============================================================================
@@ -635,7 +734,7 @@ async def get_existing_forecasts():
                     current_date_col,
                     created_at
                 FROM forecasts
-                ORDER BY forecast_date ASC, product_sku ASC
+                ORDER BY product_sku ASC, forecast_date ASC
             """
             df = pd.read_sql(query, engine)
             

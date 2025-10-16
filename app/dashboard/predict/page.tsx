@@ -52,7 +52,11 @@ export default function PredictPage() {
             }
           })
 
-          mapped.sort((a, b) => a.forecastDateRaw.getTime() - b.forecastDateRaw.getTime())
+          mapped.sort((a, b) => {
+            const skuCompare = a.sku.localeCompare(b.sku)
+            if (skuCompare !== 0) return skuCompare
+            return a.forecastDateRaw.getTime() - b.forecastDateRaw.getTime()
+          })
 
           setForecastData(mapped)
           console.log("[v0] Loaded", mapped.length, "forecast records")
@@ -120,7 +124,11 @@ export default function PredictPage() {
           }
         })
 
-        mapped.sort((a, b) => a.forecastDateRaw.getTime() - b.forecastDateRaw.getTime())
+        mapped.sort((a, b) => {
+          const skuCompare = a.sku.localeCompare(b.sku)
+          if (skuCompare !== 0) return skuCompare
+          return a.forecastDateRaw.getTime() - b.forecastDateRaw.getTime()
+        })
 
         setForecastData(mapped)
       })
