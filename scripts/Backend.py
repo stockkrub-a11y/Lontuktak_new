@@ -9,6 +9,7 @@ import io
 import uvicorn
 from sqlalchemy import text
 import sys
+import time
 
 # Import local modules
 from Auto_cleaning import auto_cleaning
@@ -18,6 +19,23 @@ from Notification import generate_stock_report
 
 # Initialize FastAPI app
 app = FastAPI(title="Lon TukTak Stock Management API")
+
+@app.middleware("http")
+async def log_requests(request, call_next):
+    start_time = time.time()
+    print(f"\n{'='*80}", flush=True)
+    print(f"🌐 REQUEST: {request.method} {request.url.path}", flush=True)
+    print(f"{'='*80}", flush=True)
+    sys.stdout.flush()
+    
+    response = await call_next(request)
+    
+    process_time = time.time() - start_time
+    print(f"✅ RESPONSE: {response.status_code} (took {process_time:.2f}s)", flush=True)
+    print(f"{'='*80}\n", flush=True)
+    sys.stdout.flush()
+    
+    return response
 
 # Configure CORS
 app.add_middleware(
@@ -32,6 +50,16 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.on_event("startup")
+async def startup_event():
+    print("\n" + "="*80, flush=True)
+    print("🚀 LON TUKTAK BACKEND STARTED", flush=True)
+    print("="*80, flush=True)
+    print(f"✅ Backend loaded from: {__file__}", flush=True)
+    print(f"✅ Database engine available: {engine is not None}", flush=True)
+    print("="*80 + "\n", flush=True)
+    sys.stdout.flush()
 
 # ============================================================================
 # HEALTH CHECK
