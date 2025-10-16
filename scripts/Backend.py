@@ -620,11 +620,11 @@ async def get_existing_forecasts():
         traceback.print_exc()
         return {"success": False, "forecast": [], "error": str(e)}
 
-@app.post("/predict/generate")
-async def generate_forecasts():
-    """Generate new forecasts based on trained model"""
+@app.post("/predict")
+async def predict_sales(n_forecast: int = Query(3, description="Number of months to forecast")):
+    """Generate sales forecasts for n months"""
     try:
-        print("[Backend] Generating forecasts...")
+        print(f"[Backend] Generating {n_forecast} month forecast...")
         
         if not engine:
             raise HTTPException(status_code=500, detail="Database not available")
@@ -661,12 +661,12 @@ async def generate_forecasts():
         df_cleaned = pd.read_sql(query, engine)
         
         # Recreate the training data
-        from Predict import update_model_and_train
+        print("[Backend] Preparing training data...")
         df_window_raw, df_window, _, X_train, y_train, X_test, y_test, product_sku_last = update_model_and_train(df_cleaned)
         
-        # Run forecast loop with proper parameters
-        print("[Backend] Running forecast loop...")
-        long_forecast, forecast_results = forcast_loop(X_train, y_train, df_window_raw, product_sku_last, base_model)
+        # Run forecast loop with n_forecast parameter
+        print(f"[Backend] Running forecast loop for {n_forecast} months...")
+        long_forecast, forecast_results = forcast_loop(X_train, y_train, df_window_raw, product_sku_last, base_model, n_forecast=n_forecast)
         
         # Save forecasts to database
         print("[Backend] Saving forecasts to database...")
@@ -695,12 +695,19 @@ async def generate_forecasts():
         
         forecast_df.to_sql('forecasts', engine, if_exists='append', index=False)
         
-        print(f"[Backend] ✅ Generated {len(forecast_results)} forecasts")
+        print(f"[Backend] ✅ Generated {len(forecast_results)} forecasts for {n_forecast} months")
+        
+        # Convert dates to strings for JSON serialization
+        for item in forecast_results:
+            if 'forecast_date' in item:
+                item['forecast_date'] = str(item['forecast_date'])
+            if 'current_date_col' in item:
+                item['current_date_col'] = str(item['current_date_col'])
         
         return {
-            "success": True,
-            "message": "Forecasts generated successfully",
-            "forecast_count": len(forecast_results),
+            "status": "success",
+            "forecast_rows": len(forecast_results),
+            "n_forecast": n_forecast,
             "forecast": forecast_results
         }
         
