@@ -212,12 +212,12 @@ async def upload_stock_files(
         # Update base_stock with current stock
         print("[Backend] Updating base_stock table...")
         base_stock_df = pd.DataFrame({
-            'product_name': df_curr.get('product_name', df_curr.iloc[:, 0]),
+            'product_name': df_curr['product_name'],
             'product_sku': df_curr.get('product_sku', ''),
-            'stock_level': df_curr.get('stock', df_curr.get('Stock', 0)),
-            'หมวดหมู่': df_curr.get('หมวดหมู่', df_curr.get('category', '')),
-            'unchanged_counter': report_df['unchanged_counter'],
-            'flag': report_df['flag'],
+            'stock_level': df_curr['stock_level'],
+            'หมวดหมู่': df_curr.get('หมวดหมู่', ''),
+            'unchanged_counter': report_df['unchanged_counter'].values,
+            'flag': report_df['flag'].values,
             'updated_at': datetime.now()
         })
         
@@ -324,102 +324,6 @@ async def get_stock_levels(
         traceback.print_exc()
         return {"success": False, "data": [], "error": str(e)}
 
-@app.get("/stock/categories")
-async def get_stock_categories():
-    """Get unique categories from base_stock table"""
-    try:
-        print("[Backend] Fetching stock categories...")
-        
-        if not engine:
-            return {"success": False, "data": []}
-        
-        query = """
-            SELECT DISTINCT "หมวดหมู่" as category
-            FROM base_stock
-            WHERE "หมวดหมู่" IS NOT NULL AND "หมวดหมู่" != ''
-            ORDER BY category
-        """
-        
-        df = pd.read_sql(query, engine)
-        
-        if not df.empty:
-            categories = df['category'].tolist()
-            print(f"[Backend] ✅ Retrieved {len(categories)} categories")
-            return {"success": True, "data": categories}
-        else:
-            print("[Backend] No categories found")
-            return {"success": True, "data": []}
-        
-    except Exception as e:
-        print(f"[Backend] ❌ Error fetching categories: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return {"success": False, "data": [], "error": str(e)}
-
-# ============================================================================
-# TRAINING ENDPOINTS
-# ============================================================================
-
-@app.post("/train")
-async def train_model(
-    sales_file: UploadFile = File(...),
-    product_file: Optional[UploadFile] = File(None)
-):
-    """Train the forecasting model with sales and product data"""
-    try:
-        print("[Backend] Starting model training...")
-        
-        # Read sales file
-        sales_content = await sales_file.read()
-        df_sales = pd.read_excel(io.BytesIO(sales_content))
-        print(f"[Backend] Sales data loaded: {len(df_sales)} rows")
-        
-        # Read product file if provided
-        df_product = None
-        if product_file:
-            product_content = await product_file.read()
-            df_product = pd.read_excel(io.BytesIO(product_content))
-            print(f"[Backend] Product data loaded: {len(df_product)} rows")
-        
-        # Clean the data
-        print("[Backend] Cleaning data...")
-        df_cleaned = auto_cleaning(df_sales, df_product)
-        
-        # Save to database
-        print("[Backend] Saving to base_data table...")
-        df_cleaned.to_sql('base_data', engine, if_exists='replace', index=False)
-        
-        # Train the model
-        print("[Backend] Training forecasting model...")
-        update_model_and_train(df_cleaned)
-        
-        # Generate forecasts
-        print("[Backend] Generating forecasts...")
-        forecast_df = forcast_loop(df_cleaned, n_forecast=3)
-        
-        # Save forecasts to database
-        print("[Backend] Saving forecasts to database...")
-        forecast_df.to_sql('forecasts', engine, if_exists='replace', index=False)
-        
-        # Evaluate model
-        print("[Backend] Evaluating model...")
-        metrics = Evaluate(df_cleaned)
-        
-        print("[Backend] ✅ Training completed successfully")
-        return {
-            "success": True,
-            "message": "Model trained successfully",
-            "data_rows": len(df_cleaned),
-            "forecast_rows": len(forecast_df),
-            "metrics": metrics
-        }
-        
-    except Exception as e:
-        print(f"[Backend] ❌ Error in training: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
-
 # ============================================================================
 # ANALYSIS ENDPOINTS
 # ============================================================================
@@ -498,76 +402,6 @@ async def get_dashboard_analytics():
             },
             "error": str(e)
         }
-
-# ============================================================================
-# PREDICT ENDPOINTS
-# ============================================================================
-
-@app.get("/predict/existing")
-async def get_existing_forecasts():
-    """Get existing forecast data from the forecasts table"""
-    try:
-        print("[Backend] Fetching existing forecasts...")
-        
-        if not engine:
-            return {"success": False, "forecast": []}
-        
-        try:
-            query = """
-                SELECT 
-                    product_sku,
-                    forecast_date,
-                    predicted_sales,
-                    current_sales,
-                    current_date_col
-                FROM forecasts
-                ORDER BY forecast_date ASC, product_sku ASC
-            """
-            df = pd.read_sql(query, engine)
-            
-            if not df.empty:
-                print(f"[Backend] ✅ Retrieved {len(df)} forecast records")
-                forecasts = df.to_dict('records')
-                # Convert datetime to string for JSON serialization
-                for forecast in forecasts:
-                    if 'forecast_date' in forecast and pd.notna(forecast['forecast_date']):
-                        forecast['forecast_date'] = str(forecast['forecast_date'])
-                    if 'current_date_col' in forecast and pd.notna(forecast['current_date_col']):
-                        forecast['current_date_col'] = str(forecast['current_date_col'])
-                return {"success": True, "forecast": forecasts}
-            else:
-                print("[Backend] No forecast data found")
-                return {"success": True, "forecast": []}
-        except Exception as db_error:
-            print(f"[Backend] Database query failed: {str(db_error)}")
-            import traceback
-            traceback.print_exc()
-            return {"success": False, "forecast": []}
-        
-    except Exception as e:
-        print(f"[Backend] ❌ Error fetching forecasts: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return {"success": False, "forecast": []}
-
-@app.delete("/predict/clear")
-async def clear_forecasts():
-    """Clear all forecast data from the forecasts table"""
-    try:
-        print("[Backend] Clearing forecasts table...")
-        
-        if not engine:
-            raise HTTPException(status_code=500, detail="Database not available")
-        
-        with engine.begin() as conn:
-            conn.execute(text("DELETE FROM forecasts"))
-        
-        print("[Backend] ✅ Forecasts cleared")
-        return {"success": True, "message": "Forecasts cleared successfully"}
-        
-    except Exception as e:
-        print(f"[Backend] ❌ Error clearing forecasts: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
 
 # ============================================================================
 # RUN SERVER
