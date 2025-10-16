@@ -443,7 +443,7 @@ async def train_model(
         
         # Generate forecasts
         print("[Backend] Generating forecasts...")
-        forecast_df = forcast_loop(n_forecast=3)
+        forecast_df = forcast_loop(n_forecast=1)
         
         # Save forecasts to database
         print("[Backend] Saving forecasts...")
