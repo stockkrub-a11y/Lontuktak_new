@@ -314,7 +314,9 @@ export default function NotificationsPage() {
   }
 
   const handleClearBaseStock = async () => {
-    if (!confirm("Are you sure you want to clear the base stock database? This will reset all stock history.")) {
+    if (
+      !confirm("Are you sure you want to clear all stock data? This will reset both stock history and notifications.")
+    ) {
       return
     }
 
@@ -325,16 +327,16 @@ export default function NotificationsPage() {
       })
 
       if (!response.ok) {
-        throw new Error("Failed to clear base stock")
+        throw new Error("Failed to clear stock data")
       }
 
-      alert("Base stock database cleared successfully!")
+      alert("Stock data cleared successfully!")
       setBaseStockExists(false)
       setPreviousStockFile(null)
       setCurrentStockFile(null)
     } catch (error) {
-      console.error("[v0] Failed to clear base stock:", error)
-      alert(`Failed to clear base stock: ${error instanceof Error ? error.message : "Unknown error"}`)
+      console.error("[v0] Failed to clear stock data:", error)
+      alert(`Failed to clear stock data: ${error instanceof Error ? error.message : "Unknown error"}`)
     }
   }
 
@@ -444,7 +446,7 @@ export default function NotificationsPage() {
                   className="flex items-center gap-2 px-4 py-2 bg-white rounded-lg border border-[#ea5457] text-[#ea5457] hover:bg-[#ffe2e2] transition-colors"
                 >
                   <X className="w-4 h-4" />
-                  <span className="text-sm font-medium">Clear Base Stock</span>
+                  <span className="text-sm font-medium">Clear Stock</span>
                 </button>
               )}
               <button

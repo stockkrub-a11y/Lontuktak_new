@@ -412,21 +412,22 @@ async def upload_stock_files(
 
 @app.delete("/notifications/clear_base_stock")
 async def clear_base_stock():
-    """Clear the base_stock table"""
+    """Clear both base_stock and stock_notifications tables"""
     try:
-        print("[Backend] Clearing base_stock table...")
+        print("[Backend] Clearing base_stock and stock_notifications tables...")
         
         if not engine:
             raise HTTPException(status_code=500, detail="Database not available")
         
         with engine.begin() as conn:
             conn.execute(text("DELETE FROM base_stock"))
+            conn.execute(text("DELETE FROM stock_notifications"))
         
-        print("[Backend] ✅ base_stock cleared")
-        return {"success": True, "message": "Base stock cleared successfully"}
+        print("[Backend] ✅ base_stock and stock_notifications cleared")
+        return {"success": True, "message": "Stock data cleared successfully"}
         
     except Exception as e:
-        print(f"[Backend] ❌ Error clearing base_stock: {str(e)}")
+        print(f"[Backend] ❌ Error clearing stock data: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # ============================================================================
