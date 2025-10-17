@@ -15,7 +15,7 @@ import time
 from Auto_cleaning import auto_cleaning
 from DB_server import engine
 from Predict import update_model_and_train, forcast_loop, Evaluate
-from Notification import generate_stock_report
+from Notification import generate_stock_report, update_manual_values
 
 # Initialize FastAPI app
 app = FastAPI(title="Lon TukTak Stock Management API")
@@ -428,6 +428,53 @@ async def clear_base_stock():
         
     except Exception as e:
         print(f"[Backend] ❌ Error clearing stock data: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/notifications/update_manual_values")
+async def update_manual_values_endpoint(
+    product_sku: str = Query(..., description="Product SKU"),
+    minstock: Optional[int] = Query(None, description="Manual MinStock value"),
+    buffer: Optional[int] = Query(None, description="Manual Buffer value")
+):
+    """Update manual MinStock and Buffer values and regenerate report"""
+    try:
+        print(f"[Backend] Updating manual values for {product_sku}: MinStock={minstock}, Buffer={buffer}")
+        
+        # Update manual overrides
+        update_manual_values(product_sku, minstock, buffer)
+        
+        # Get current and previous data from base_stock
+        query = "SELECT * FROM base_stock ORDER BY updated_at DESC"
+        df_curr = pd.read_sql(query, engine)
+        
+        if df_curr.empty:
+            raise HTTPException(status_code=400, detail="No stock data available")
+        
+        # For previous data, we'll use the same data but shifted
+        # In a real scenario, you'd have historical snapshots
+        df_prev = df_curr.copy()
+        
+        # Regenerate report
+        print("[Backend] Regenerating stock report with updated values...")
+        report_df = generate_stock_report(df_prev, df_curr)
+        
+        # Save updated report
+        report_df['created_at'] = datetime.now()
+        report_df.to_sql('stock_notifications', engine, if_exists='replace', index=False)
+        
+        print(f"[Backend] ✅ Updated manual values and regenerated report")
+        return {
+            "success": True,
+            "message": "Manual values updated and report regenerated",
+            "product_sku": product_sku,
+            "minstock": minstock,
+            "buffer": buffer
+        }
+        
+    except Exception as e:
+        print(f"[Backend] ❌ Error updating manual values: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 # ============================================================================

@@ -4,8 +4,8 @@ import numpy as np  # Added numpy import for vectorized operations
 from DB_server import engine  # your SQLAlchemy engine
 
 # Manual overrides
-manual_minstock = {}  # {'Product': value}
-manual_buffer = {}    # {'Product': value}
+manual_minstock = {}  # {'Product_SKU': value}
+manual_buffer = {}    # {'Product_SKU': value}
 
 SAFETY_FACTOR = 1.5
 WEEKS_TO_COVER = 2
@@ -14,7 +14,7 @@ MAX_BUFFER = 50
 # ================= Get latest stock per product =================
 def get_data(week_date):
     query = f"""
-        SELECT product_name, product_sku, stock_level
+        SELECT product_name, product_sku, stock_level, "หมวดหมู่" as category
         FROM stock_data
         WHERE week_date = '{week_date}'
         AND uploaded_at = (
@@ -30,15 +30,20 @@ def get_data(week_date):
 # ================= Generate Stock Report =================
 def generate_stock_report(df_prev, df_curr):
     """
-    df_curr: columns ['product_name', 'product_sku', 'stock_level']
-    df_prev: columns ['product_name', 'product_sku', 'stock_level']
+    df_curr: columns ['product_name', 'product_sku', 'stock_level', 'category']
+    df_prev: columns ['product_name', 'product_sku', 'stock_level', 'category']
     """
     # Build a lookup from previous snapshot (keep last occurrence of duplicates)
     df_prev_unique = df_prev.drop_duplicates(subset='product_sku', keep='last')
     prev_lookup = df_prev_unique.set_index('product_sku')['stock_level']
 
     curr = df_curr.drop_duplicates(subset='product_sku', keep='last').copy()
-    curr.rename(columns={'product_name': 'Product', 'product_sku': 'Product_SKU', 'stock_level': 'Stock'}, inplace=True)
+    curr.rename(columns={
+        'product_name': 'Product', 
+        'product_sku': 'Product_SKU', 
+        'stock_level': 'Stock',
+        'category': 'Category'
+    }, inplace=True)
 
     # Last_Stock = previous snapshot if available, else fall back to current stock
     curr['Last_Stock'] = curr['Product_SKU'].map(prev_lookup).fillna(curr['Stock'])
@@ -56,7 +61,7 @@ def generate_stock_report(df_prev, df_curr):
 
     # MinStock: manual override, else formula
     default_min = (curr['Weekly_Sale'] * WEEKS_TO_COVER * SAFETY_FACTOR).astype(int)
-    manual_min = curr['Product'].map(manual_minstock)
+    manual_min = curr['Product_SKU'].map(manual_minstock)
     curr['MinStock'] = np.where(manual_min.notna(), manual_min, default_min).astype(int)
 
     # Buffer: dynamic by decrease rate, capped; manual override if present
@@ -66,7 +71,7 @@ def generate_stock_report(df_prev, df_curr):
         default=5
     )
     dyn_buf = np.minimum(dyn_buf, MAX_BUFFER)
-    manual_buf = curr['Product'].map(manual_buffer)
+    manual_buf = curr['Product_SKU'].map(manual_buffer)
     curr['Buffer'] = np.where(manual_buf.notna(), manual_buf, dyn_buf).astype(int)
 
     # Reorder quantity (at least SAFETY_FACTOR * weekly sale)
@@ -88,8 +93,15 @@ def generate_stock_report(df_prev, df_curr):
         )
     )
 
-    return curr[['Product', 'Product_SKU', 'Stock', 'Last_Stock', 'Decrease_Rate(%)', 'Weeks_To_Empty',
+    return curr[['Product', 'Product_SKU', 'Category', 'Stock', 'Last_Stock', 'Decrease_Rate(%)', 'Weeks_To_Empty',
                  'MinStock', 'Buffer', 'Reorder_Qty', 'Status', 'Description']].reset_index(drop=True)
+
+def update_manual_values(product_sku: str, minstock: int = None, buffer: int = None):
+    """Update manual MinStock and Buffer values for a product"""
+    if minstock is not None:
+        manual_minstock[product_sku] = minstock
+    if buffer is not None:
+        manual_buffer[product_sku] = buffer
 
 # ================= Get Notifications =================
 def get_notifications():

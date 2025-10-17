@@ -22,6 +22,8 @@ import {
   RotateCcw,
   CheckCircle,
   CloudUpload,
+  Edit2,
+  Save,
 } from "lucide-react"
 
 import { getNotifications } from "@/lib/api"
@@ -34,6 +36,7 @@ interface Notification {
   title: string
   product: string
   sku: string
+  category: string // Added Category mapping
   estimatedTime: string
   recommendUnits: number
   currentStock: number
@@ -48,6 +51,9 @@ export default function NotificationsPage() {
   const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null)
   const [showFilterModal, setShowFilterModal] = useState(false)
   const [selectedStatuses, setSelectedStatuses] = useState<NotificationStatus[]>([])
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]) // Added state for selected categories
+  const [searchQuery, setSearchQuery] = useState("") // Added state for search query
+  const [categorySearch, setCategorySearch] = useState("") // Added state for category search
   const [isPreviousStockModalOpen, setIsPreviousStockModalOpen] = useState(false)
   const [isCurrentStockModalOpen, setIsCurrentStockModalOpen] = useState(false)
   const [notifications, setNotifications] = useState<Notification[]>([])
@@ -57,6 +63,11 @@ export default function NotificationsPage() {
   const [isUploading, setIsUploading] = useState(false)
   const [baseStockExists, setBaseStockExists] = useState(false)
   const [checkingBaseStock, setCheckingBaseStock] = useState(true)
+  const [isEditingMinStock, setIsEditingMinStock] = useState(false) // Added state for editing min stock
+  const [isEditingBuffer, setIsEditingBuffer] = useState(false) // Added state for editing buffer
+  const [editedMinStock, setEditedMinStock] = useState<number>(0) // Added state for edited min stock
+  const [editedBuffer, setEditedBuffer] = useState<number>(0) // Added state for edited buffer
+  const [isSaving, setIsSaving] = useState(false) // Added state for saving
 
   useEffect(() => {
     async function checkBaseStock() {
@@ -118,6 +129,7 @@ export default function NotificationsPage() {
                 : "Stock is Enough",
             product: item.Product,
             sku: item.Product_SKU || item.Product,
+            category: item.Category || "Uncategorized", // Added Category mapping
             estimatedTime: `${item.Weeks_To_Empty} weeks`,
             recommendUnits: item.Reorder_Qty,
             currentStock: item.Stock,
@@ -140,8 +152,34 @@ export default function NotificationsPage() {
     fetchNotifications()
   }, [])
 
-  const filteredNotifications =
-    selectedStatuses.length > 0 ? notifications.filter((n) => selectedStatuses.includes(n.status)) : notifications
+  const filteredNotifications = notifications.filter((n) => {
+    // Status filter
+    if (selectedStatuses.length > 0 && !selectedStatuses.includes(n.status)) {
+      return false
+    }
+
+    // Category filter
+    if (selectedCategories.length > 0 && !selectedCategories.includes(n.category)) {
+      return false
+    }
+
+    // Search filter (searches in SKU and product name)
+    if (
+      searchQuery &&
+      !n.sku.toLowerCase().includes(searchQuery.toLowerCase()) &&
+      !n.product.toLowerCase().includes(searchQuery.toLowerCase())
+    ) {
+      return false
+    }
+
+    return true
+  })
+
+  // Get unique categories from notifications
+  const uniqueCategories = Array.from(new Set(notifications.map((n) => n.category))).sort()
+
+  // Filter categories based on search
+  const filteredCategories = uniqueCategories.filter((cat) => cat.toLowerCase().includes(categorySearch.toLowerCase()))
 
   const getStatusColor = (status: NotificationStatus) => {
     switch (status) {
@@ -179,8 +217,9 @@ export default function NotificationsPage() {
   const exportToCSV = () => {
     const headers = [
       "Status",
-      "Product",
-      "SKU",
+      "Product SKU", // Updated header for clarity
+      "Product Name", // Added Product Name header
+      "Category", // Added Category header
       "Current Stock",
       "Decrease Rate",
       "Time to Run Out",
@@ -190,8 +229,9 @@ export default function NotificationsPage() {
     ]
     const rows = filteredNotifications.map((n) => [
       n.status,
-      n.product,
-      n.sku,
+      n.sku, // Exported SKU
+      n.product, // Exported Product Name
+      n.category, // Exported Category
       n.currentStock,
       n.decreaseRate,
       n.timeToRunOut,
@@ -212,6 +252,83 @@ export default function NotificationsPage() {
 
   const toggleStatus = (status: NotificationStatus) => {
     setSelectedStatuses((prev) => (prev.includes(status) ? prev.filter((s) => s !== status) : [...prev, status]))
+  }
+
+  const toggleCategory = (category: string) => {
+    // Added function to toggle category selection
+    setSelectedCategories((prev) =>
+      prev.includes(category) ? prev.filter((c) => c !== category) : [...prev, category],
+    )
+  }
+
+  const handleSaveManualValues = async () => {
+    if (!selectedNotification) return
+
+    setIsSaving(true)
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+      const params = new URLSearchParams({
+        product_sku: selectedNotification.sku,
+      })
+
+      if (isEditingMinStock) {
+        params.append("minstock", editedMinStock.toString())
+      }
+      if (isEditingBuffer) {
+        params.append("buffer", editedBuffer.toString())
+      }
+
+      const response = await fetch(`${apiUrl}/notifications/update_manual_values?${params}`, {
+        method: "POST",
+      })
+
+      if (!response.ok) {
+        throw new Error("Failed to update manual values")
+      }
+
+      alert("Manual values updated successfully! Report has been regenerated.")
+
+      // Reset editing states
+      setIsEditingMinStock(false)
+      setIsEditingBuffer(false)
+      setSelectedNotification(null)
+
+      // Refresh notifications
+      const data = await getNotifications()
+      if (Array.isArray(data)) {
+        const mapped: Notification[] = data.map((item, index) => {
+          const status: NotificationStatus =
+            item.Status === "Red" ? "critical" : item.Status === "Yellow" ? "warning" : "safe"
+
+          return {
+            id: String(index + 1),
+            status,
+            title: item.Description.includes("out of stock")
+              ? "Nearly Out of Stock!"
+              : item.Description.includes("Decreasing rapidly")
+                ? "Decreasing Rapidly"
+                : "Stock is Enough",
+            product: item.Product,
+            sku: item.Product_SKU || item.Product,
+            category: item.Category || "Uncategorized",
+            estimatedTime: `${item.Weeks_To_Empty} weeks`,
+            recommendUnits: item.Reorder_Qty,
+            currentStock: item.Stock,
+            decreaseRate: `${item["Decrease_Rate(%)"]}%/week`,
+            timeToRunOut: `${Math.round(item.Weeks_To_Empty * 7)} days`,
+            minStock: item.MinStock,
+            buffer: item.Buffer,
+            recommendedRestock: item.Reorder_Qty,
+          }
+        })
+        setNotifications(mapped)
+      }
+    } catch (error) {
+      console.error("[v0] Failed to update manual values:", error)
+      alert(`Failed to update: ${error instanceof Error ? error.message : "Unknown error"}`)
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   const handlePreviousFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -293,6 +410,7 @@ export default function NotificationsPage() {
                 : "Stock is Enough",
             product: item.Product,
             sku: item.Product_SKU || item.Product,
+            category: item.Category || "Uncategorized",
             estimatedTime: `${item.Weeks_To_Empty} weeks`,
             recommendUnits: item.Reorder_Qty,
             currentStock: item.Stock,
@@ -355,7 +473,9 @@ export default function NotificationsPage() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#938d7a]" />
               <input
                 type="text"
-                placeholder="Search for stocks & more"
+                placeholder="Search for product SKU or name..." // Updated placeholder
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 bg-[#f8f5ee] rounded-lg border-none outline-none text-sm text-black placeholder:text-[#938d7a] focus:ring-2 focus:ring-[#938d7a]/20"
               />
             </div>
@@ -472,7 +592,14 @@ export default function NotificationsPage() {
               {filteredNotifications.map((notification) => (
                 <button
                   key={notification.id}
-                  onClick={() => setSelectedNotification(notification)}
+                  onClick={() => {
+                    // Initialize editing states when selecting notification
+                    setSelectedNotification(notification)
+                    setEditedMinStock(notification.minStock)
+                    setEditedBuffer(notification.buffer)
+                    setIsEditingMinStock(false)
+                    setIsEditingBuffer(false)
+                  }}
                   className={`w-full bg-white rounded-lg p-6 border-l-4 ${getStatusColor(
                     notification.status,
                   )} hover:shadow-md transition-shadow text-left relative`}
@@ -482,9 +609,12 @@ export default function NotificationsPage() {
                     <div className="flex-1">
                       <h3 className="text-lg font-semibold text-black mb-1">
                         <span className={getStatusTextColor(notification.status)}>{notification.title}</span> -{" "}
-                        {notification.product}
+                        {notification.sku}
                       </h3>
                       <p className="text-sm text-[#938d7a]">
+                        {notification.product} • {notification.category}
+                      </p>
+                      <p className="text-sm text-[#938d7a] mt-1">
                         Estimated to run out in{" "}
                         <span className={getStatusTextColor(notification.status)}>{notification.estimatedTime}</span>
                         {notification.recommendUnits > 0 && (
@@ -514,9 +644,7 @@ export default function NotificationsPage() {
             <div className="flex items-center justify-between mb-6">
               <div>
                 <div className="flex items-center gap-3 mb-2">
-                  <h3 className="text-xl font-bold text-black">
-                    {selectedNotification.product} || {selectedNotification.sku}
-                  </h3>
+                  <h3 className="text-xl font-bold text-black">{selectedNotification.sku}</h3>
                   <span
                     className={`text-xs px-2 py-1 rounded ${
                       selectedNotification.status === "critical"
@@ -533,7 +661,8 @@ export default function NotificationsPage() {
                         : "Safe"}
                   </span>
                 </div>
-                <p className="text-sm text-[#938d7a]">Inventory alert • Updated 5m ago</p>
+                <p className="text-sm text-[#938d7a]">{selectedNotification.product}</p>
+                <p className="text-xs text-[#938d7a]">{selectedNotification.category} • Updated 5m ago</p>
               </div>
               <button onClick={() => setSelectedNotification(null)} className="text-[#938d7a] hover:text-black">
                 <X className="w-5 h-5" />
@@ -570,18 +699,52 @@ export default function NotificationsPage() {
               </div>
 
               <div className="border border-[#cecabf] rounded-lg p-4">
-                <p className="text-xs text-[#938d7a] mb-2">Min Stock</p>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs text-[#938d7a]">Min Stock</p>
+                  <button
+                    onClick={() => setIsEditingMinStock(!isEditingMinStock)}
+                    className="text-[#938d7a] hover:text-black"
+                  >
+                    <Edit2 className="w-3 h-3" />
+                  </button>
+                </div>
                 <div className="flex items-center justify-between">
-                  <p className="text-3xl font-bold text-black">{selectedNotification.minStock}</p>
+                  {isEditingMinStock ? (
+                    <input
+                      type="number"
+                      value={editedMinStock}
+                      onChange={(e) => setEditedMinStock(Number.parseInt(e.target.value) || 0)}
+                      className="text-3xl font-bold text-black w-24 border-b-2 border-[#cecabf] focus:outline-none focus:border-black"
+                    />
+                  ) : (
+                    <p className="text-3xl font-bold text-black">{selectedNotification.minStock}</p>
+                  )}
                   <Shield className="w-8 h-8 text-[#938d7a]" />
                 </div>
                 <p className="text-xs text-[#938d7a] mt-1">threshold</p>
               </div>
 
               <div className="border border-[#cecabf] rounded-lg p-4">
-                <p className="text-xs text-[#938d7a] mb-2">Buffer</p>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs text-[#938d7a]">Buffer</p>
+                  <button
+                    onClick={() => setIsEditingBuffer(!isEditingBuffer)}
+                    className="text-[#938d7a] hover:text-black"
+                  >
+                    <Edit2 className="w-3 h-3" />
+                  </button>
+                </div>
                 <div className="flex items-center justify-between">
-                  <p className="text-3xl font-bold text-black">{selectedNotification.buffer}</p>
+                  {isEditingBuffer ? (
+                    <input
+                      type="number"
+                      value={editedBuffer}
+                      onChange={(e) => setEditedBuffer(Number.parseInt(e.target.value) || 0)}
+                      className="text-3xl font-bold text-black w-24 border-b-2 border-[#cecabf] focus:outline-none focus:border-black"
+                    />
+                  ) : (
+                    <p className="text-3xl font-bold text-black">{selectedNotification.buffer}</p>
+                  )}
                   <Target className="w-8 h-8 text-[#938d7a]" />
                 </div>
                 <p className="text-xs text-[#938d7a] mt-1">safety stock</p>
@@ -596,14 +759,26 @@ export default function NotificationsPage() {
                 <p className="text-xs text-[#938d7a] mt-1">units suggested</p>
               </div>
             </div>
+
+            {(isEditingMinStock || isEditingBuffer) && (
+              <div className="flex justify-end">
+                <button
+                  onClick={handleSaveManualValues}
+                  disabled={isSaving}
+                  className="flex items-center gap-2 px-6 py-2 bg-[#cecabf] text-black rounded-lg hover:bg-[#938d7a] hover:text-white transition-colors disabled:opacity-50"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>{isSaving ? "Saving..." : "Save & Regenerate Report"}</span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
 
-      {/* Filter Modal */}
       {showFilterModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-3xl w-full p-6 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-lg max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-xl font-bold text-black">Filters</h3>
               <button onClick={() => setShowFilterModal(false)} className="text-[#938d7a] hover:text-black">
@@ -611,84 +786,7 @@ export default function NotificationsPage() {
               </button>
             </div>
 
-            {/* Time Range */}
-            <div className="mb-6">
-              <p className="text-sm font-medium text-black mb-3">Time Range</p>
-              <div className="flex gap-2">
-                <button className="px-4 py-2 bg-[#efece3] rounded-lg text-sm hover:bg-[#cecabf] transition-colors">
-                  Last 7 days
-                </button>
-                <button className="px-4 py-2 bg-[#efece3] rounded-lg text-sm hover:bg-[#cecabf] transition-colors">
-                  Last 30 days
-                </button>
-                <button className="px-4 py-2 bg-[#efece3] rounded-lg text-sm hover:bg-[#cecabf] transition-colors">
-                  Custom
-                </button>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-3 gap-6 mb-6">
-              {/* Product/SKU Search */}
-              <div>
-                <p className="text-sm font-medium text-black mb-3">Product / SKU</p>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#938d7a]" />
-                  <input
-                    type="text"
-                    placeholder="Search products..."
-                    className="w-full pl-10 pr-4 py-2 border border-[#cecabf] rounded-lg text-sm"
-                  />
-                </div>
-              </div>
-
-              {/* Category */}
-              <div>
-                <p className="text-sm font-medium text-black mb-3">Category</p>
-                <div className="space-y-2">
-                  <label className="flex items-center gap-2 text-sm">
-                    <input type="checkbox" className="rounded" />
-                    <span>Long pants</span>
-                  </label>
-                  <label className="flex items-center gap-2 text-sm">
-                    <input type="checkbox" className="rounded" />
-                    <span>Men Boxers</span>
-                  </label>
-                  <label className="flex items-center gap-2 text-sm">
-                    <input type="checkbox" className="rounded" />
-                    <span>Women Boxers</span>
-                  </label>
-                  <label className="flex items-center gap-2 text-sm">
-                    <input type="checkbox" className="rounded" />
-                    <span>T Shirt</span>
-                  </label>
-                </div>
-              </div>
-
-              {/* Size */}
-              <div>
-                <p className="text-sm font-medium text-black mb-3">Size</p>
-                <div className="space-y-2">
-                  <label className="flex items-center gap-2 text-sm">
-                    <input type="checkbox" className="rounded" />
-                    <span>Small</span>
-                  </label>
-                  <label className="flex items-center gap-2 text-sm">
-                    <input type="checkbox" className="rounded" />
-                    <span>Medium</span>
-                  </label>
-                  <label className="flex items-center gap-2 text-sm">
-                    <input type="checkbox" className="rounded" />
-                    <span>Large</span>
-                  </label>
-                  <label className="flex items-center gap-2 text-sm">
-                    <input type="checkbox" className="rounded" />
-                    <span>Extra Large</span>
-                  </label>
-                </div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-3 gap-6 mb-6">
+            <div className="grid grid-cols-2 gap-6 mb-6">
               {/* Inventory Status */}
               <div>
                 <p className="text-sm font-medium text-black mb-3">Inventory Status</p>
@@ -726,49 +824,37 @@ export default function NotificationsPage() {
                 </div>
               </div>
 
-              {/* Blank */}
+              {/* Category with search */}
               <div>
-                <p className="text-sm font-medium text-black mb-3">Blank</p>
-                <div className="space-y-2">
+                <p className="text-sm font-medium text-black mb-3">Category</p>
+                <div className="relative mb-3">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#938d7a]" />
                   <input
                     type="text"
-                    placeholder="-"
-                    className="w-full px-4 py-2 border border-[#cecabf] rounded-lg text-sm"
-                  />
-                  <input
-                    type="text"
-                    placeholder="0"
-                    className="w-full px-4 py-2 border border-[#cecabf] rounded-lg text-sm"
-                  />
-                  <input
-                    type="text"
-                    placeholder="-"
-                    className="w-full px-4 py-2 border border-[#cecabf] rounded-lg text-sm"
-                  />
-                  <input
-                    type="text"
-                    placeholder="1000"
-                    className="w-full px-4 py-2 border border-[#cecabf] rounded-lg text-sm"
+                    placeholder="Search categories..."
+                    value={categorySearch}
+                    onChange={(e) => setCategorySearch(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 border border-[#cecabf] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#938d7a]/20"
                   />
                 </div>
-              </div>
-
-              {/* Details */}
-              <div>
-                <p className="text-sm font-medium text-black mb-3">Details</p>
-                <div className="space-y-2">
-                  <label className="flex items-center gap-2 text-sm">
-                    <input type="checkbox" className="rounded" />
-                    <span>SKU</span>
-                  </label>
-                  <label className="flex items-center gap-2 text-sm">
-                    <input type="checkbox" className="rounded" />
-                    <span>Last week stock</span>
-                  </label>
-                  <label className="flex items-center gap-2 text-sm">
-                    <input type="checkbox" className="rounded" />
-                    <span>Min stock</span>
-                  </label>
+                <div className="space-y-2 max-h-40 overflow-y-auto border border-[#cecabf] rounded-lg p-2">
+                  {filteredCategories.length === 0 ? (
+                    <p className="text-sm text-[#938d7a] text-center py-2">No categories found</p>
+                  ) : (
+                    filteredCategories.map((category) => (
+                      <button
+                        key={category}
+                        onClick={() => toggleCategory(category)}
+                        className={`w-full text-left px-3 py-2 rounded text-sm transition-colors ${
+                          selectedCategories.includes(category)
+                            ? "bg-[#cecabf] text-black font-medium"
+                            : "hover:bg-[#f8f5ee] text-[#938d7a]"
+                        }`}
+                      >
+                        {category}
+                      </button>
+                    ))
+                  )}
                 </div>
               </div>
             </div>
@@ -776,7 +862,12 @@ export default function NotificationsPage() {
             {/* Action Buttons */}
             <div className="flex gap-3">
               <button
-                onClick={() => setSelectedStatuses([])}
+                onClick={() => {
+                  // Reset category filters
+                  setSelectedStatuses([])
+                  setSelectedCategories([])
+                  setCategorySearch("")
+                }}
                 className="px-4 py-2 border border-[#cecabf] rounded-lg hover:bg-[#f8f5ee] transition-colors"
               >
                 Reset
