@@ -436,41 +436,98 @@ async def update_manual_values_endpoint(
     minstock: Optional[int] = Query(None, description="Manual MinStock value"),
     buffer: Optional[int] = Query(None, description="Manual Buffer value")
 ):
-    """Update manual MinStock and Buffer values and regenerate report"""
+    """Update manual MinStock and Buffer values and recalculate that product"""
     try:
         print(f"[Backend] Updating manual values for {product_sku}: MinStock={minstock}, Buffer={buffer}")
         
-        # Update manual overrides
+        if not engine:
+            raise HTTPException(status_code=500, detail="Database not available")
+        
         update_manual_values(product_sku, minstock, buffer)
         
-        # Get current and previous data from base_stock
-        query = "SELECT * FROM base_stock ORDER BY updated_at DESC"
-        df_curr = pd.read_sql(query, engine)
+        query = text("SELECT * FROM stock_notifications WHERE \"Product_SKU\" = :sku")
+        df_notification = pd.read_sql(query, engine, params={"sku": product_sku})
         
-        if df_curr.empty:
-            raise HTTPException(status_code=400, detail="No stock data available")
+        if df_notification.empty:
+            raise HTTPException(status_code=404, detail=f"Product {product_sku} not found in notifications")
         
-        # For previous data, we'll use the same data but shifted
-        # In a real scenario, you'd have historical snapshots
-        df_prev = df_curr.copy()
+        row = df_notification.iloc[0]
         
-        # Regenerate report
-        print("[Backend] Regenerating stock report with updated values...")
-        report_df = generate_stock_report(df_prev, df_curr)
+        # Get values from the row
+        stock = row['Stock']
+        last_stock = row['Last_Stock']
+        weekly_sale = max((last_stock - stock), 1)
+        decrease_rate = ((last_stock - stock) / last_stock * 100) if last_stock > 0 else 0
+        weeks_to_empty = stock / weekly_sale if weekly_sale > 0 else 0
         
-        # Save updated report
-        report_df['created_at'] = datetime.now()
-        report_df.to_sql('stock_notifications', engine, if_exists='replace', index=False)
+        # Apply manual values or use defaults
+        if minstock is not None:
+            new_minstock = minstock
+        else:
+            new_minstock = int(weekly_sale * 4 * 1.5)  # Assuming WEEKS_TO_COVER = 4 and SAFETY_FACTOR = 1.5
         
-        print(f"[Backend] ✅ Updated manual values and regenerated report")
+        if buffer is not None:
+            new_buffer = buffer
+        else:
+            if decrease_rate > 50:
+                new_buffer = 20
+            elif decrease_rate > 20:
+                new_buffer = 10
+            else:
+                new_buffer = 5
+            new_buffer = min(new_buffer, 20)  # Assuming MAX_BUFFER = 20
+        
+        # Calculate new reorder quantity
+        default_reorder = int(weekly_sale * 1.5)
+        new_reorder_qty = max(new_minstock + new_buffer - stock, default_reorder)
+        
+        # Determine status
+        is_red = (stock < new_minstock) or (decrease_rate > 50)
+        is_yellow = (not is_red) and (decrease_rate > 20)
+        
+        if is_red:
+            new_status = 'Red'
+            new_description = f'Decreasing rapidly and nearly out of stock! Recommend restocking {new_reorder_qty} units'
+        elif is_yellow:
+            new_status = 'Yellow'
+            new_description = f'Decreasing rapidly, should prepare to restock. Recommend restocking {new_reorder_qty} units'
+        else:
+            new_status = 'Green'
+            new_description = 'Stock is sufficient'
+        
+        update_query = text("""
+            UPDATE stock_notifications
+            SET "MinStock" = :minstock,
+                "Buffer" = :buffer,
+                "Reorder_Qty" = :reorder_qty,
+                "Status" = :status,
+                "Description" = :description
+            WHERE "Product_SKU" = :sku
+        """)
+        
+        with engine.begin() as conn:
+            conn.execute(update_query, {
+                "minstock": new_minstock,
+                "buffer": new_buffer,
+                "reorder_qty": new_reorder_qty,
+                "status": new_status,
+                "description": new_description,
+                "sku": product_sku
+            })
+        
+        print(f"[Backend] ✅ Updated manual values for {product_sku}")
         return {
             "success": True,
-            "message": "Manual values updated and report regenerated",
+            "message": "Manual values updated successfully",
             "product_sku": product_sku,
-            "minstock": minstock,
-            "buffer": buffer
+            "minstock": new_minstock,
+            "buffer": new_buffer,
+            "reorder_qty": new_reorder_qty,
+            "status": new_status
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"[Backend] ❌ Error updating manual values: {str(e)}")
         import traceback
