@@ -24,11 +24,13 @@ import {
   CloudUpload,
   Edit2,
   Save,
+  ArrowUpDown,
 } from "lucide-react"
 
 import { getNotifications } from "@/lib/api"
 
 type NotificationStatus = "critical" | "warning" | "safe"
+type SortOption = "name-asc" | "name-desc" | "quantity-asc" | "quantity-desc" | "none" // Added SortOption type
 
 interface Notification {
   id: string
@@ -68,6 +70,7 @@ export default function NotificationsPage() {
   const [editedMinStock, setEditedMinStock] = useState<number>(0) // Added state for edited min stock
   const [editedBuffer, setEditedBuffer] = useState<number>(0) // Added state for edited buffer
   const [isSaving, setIsSaving] = useState(false) // Added state for saving
+  const [sortBy, setSortBy] = useState<SortOption>("none") // Added sort state
 
   useEffect(() => {
     async function checkBaseStock() {
@@ -152,28 +155,44 @@ export default function NotificationsPage() {
     fetchNotifications()
   }, [])
 
-  const filteredNotifications = notifications.filter((n) => {
-    // Status filter
-    if (selectedStatuses.length > 0 && !selectedStatuses.includes(n.status)) {
-      return false
-    }
+  const filteredAndSortedNotifications = notifications
+    .filter((n) => {
+      // Status filter
+      if (selectedStatuses.length > 0 && !selectedStatuses.includes(n.status)) {
+        return false
+      }
 
-    // Category filter
-    if (selectedCategories.length > 0 && !selectedCategories.includes(n.category)) {
-      return false
-    }
+      // Category filter
+      if (selectedCategories.length > 0 && !selectedCategories.includes(n.category)) {
+        return false
+      }
 
-    // Search filter (searches in SKU and product name)
-    if (
-      searchQuery &&
-      !n.sku.toLowerCase().includes(searchQuery.toLowerCase()) &&
-      !n.product.toLowerCase().includes(searchQuery.toLowerCase())
-    ) {
-      return false
-    }
+      // Search filter (searches in SKU and product name)
+      if (
+        searchQuery &&
+        !n.sku.toLowerCase().includes(searchQuery.toLowerCase()) &&
+        !n.product.toLowerCase().includes(searchQuery.toLowerCase())
+      ) {
+        return false
+      }
 
-    return true
-  })
+      return true
+    })
+    .sort((a, b) => {
+      // Apply sorting
+      switch (sortBy) {
+        case "name-asc":
+          return a.product.localeCompare(b.product)
+        case "name-desc":
+          return b.product.localeCompare(a.product)
+        case "quantity-asc":
+          return a.currentStock - b.currentStock
+        case "quantity-desc":
+          return b.currentStock - a.currentStock
+        default:
+          return 0
+      }
+    })
 
   // Get unique categories from notifications
   const uniqueCategories = Array.from(new Set(notifications.map((n) => n.category))).sort()
@@ -227,7 +246,7 @@ export default function NotificationsPage() {
       "Buffer",
       "Recommended Restock",
     ]
-    const rows = filteredNotifications.map((n) => [
+    const rows = filteredAndSortedNotifications.map((n) => [
       n.status,
       n.sku, // Exported SKU
       n.product, // Exported Product Name
@@ -589,7 +608,7 @@ export default function NotificationsPage() {
             </div>
           ) : (
             <div className="space-y-4">
-              {filteredNotifications.map((notification) => (
+              {filteredAndSortedNotifications.map((notification) => (
                 <button
                   key={notification.id}
                   onClick={() => {
@@ -611,8 +630,8 @@ export default function NotificationsPage() {
                         <span className={getStatusTextColor(notification.status)}>{notification.title}</span> -{" "}
                         {notification.sku}
                       </h3>
+                      <p className="text-sm text-[#938d7a] mb-2">{notification.product}</p>
                       <div className="flex items-center gap-2 mb-1">
-                        <p className="text-sm text-[#938d7a]">{notification.product}</p>
                         <span className="px-2 py-0.5 bg-[#efece3] text-[#938d7a] text-xs rounded-full font-medium">
                           {notification.category}
                         </span>
@@ -865,14 +884,48 @@ export default function NotificationsPage() {
               </div>
             </div>
 
+            <div className="mb-6">
+              <p className="text-sm font-medium text-black mb-3">Sort By</p>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={() => setSortBy(sortBy === "name-asc" ? "name-desc" : "name-asc")}
+                  className={`flex items-center justify-between px-4 py-2 rounded-lg text-sm transition-colors ${
+                    sortBy === "name-asc" || sortBy === "name-desc"
+                      ? "bg-[#cecabf] text-black ring-2 ring-[#938d7a]"
+                      : "bg-[#f8f5ee] text-[#938d7a] hover:bg-[#efece3]"
+                  }`}
+                >
+                  <span>Product Name</span>
+                  <ArrowUpDown className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => setSortBy(sortBy === "quantity-asc" ? "quantity-desc" : "quantity-asc")}
+                  className={`flex items-center justify-between px-4 py-2 rounded-lg text-sm transition-colors ${
+                    sortBy === "quantity-asc" || sortBy === "quantity-desc"
+                      ? "bg-[#cecabf] text-black ring-2 ring-[#938d7a]"
+                      : "bg-[#f8f5ee] text-[#938d7a] hover:bg-[#efece3]"
+                  }`}
+                >
+                  <span>Stock Quantity</span>
+                  <ArrowUpDown className="w-4 h-4" />
+                </button>
+              </div>
+              {sortBy !== "none" && (
+                <p className="text-xs text-[#938d7a] mt-2">
+                  Sorting by {sortBy.includes("name") ? "product name" : "stock quantity"} (
+                  {sortBy.includes("asc") ? "ascending" : "descending"})
+                </p>
+              )}
+            </div>
+
             {/* Action Buttons */}
             <div className="flex gap-3">
               <button
                 onClick={() => {
-                  // Reset category filters
                   setSelectedStatuses([])
                   setSelectedCategories([])
                   setCategorySearch("")
+                  setSortBy("none")
                 }}
                 className="px-4 py-2 border border-[#cecabf] rounded-lg hover:bg-[#f8f5ee] transition-colors"
               >
