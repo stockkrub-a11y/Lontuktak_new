@@ -666,7 +666,7 @@ async def get_analysis_historical_sales(sku: str = Query(..., description="Produ
                 SELECT 
                     sales_date,
                     product_sku,
-                    total_quantity,
+                    quantity,
                     total_amount_baht,
                     EXTRACT(YEAR FROM sales_date) as year,
                     EXTRACT(MONTH FROM sales_date) as month

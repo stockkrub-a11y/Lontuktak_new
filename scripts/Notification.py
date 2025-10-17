@@ -1,7 +1,7 @@
 # ================= Backend: Postgres Version =================
 import pandas as pd
+import numpy as np  # Added numpy import for vectorized operations
 from DB_server import engine  # your SQLAlchemy engine
-import numpy as np
 
 # Manual overrides
 manual_minstock = {}  # {'Product': value}
@@ -28,56 +28,6 @@ def get_data(week_date):
     return df
 
 # ================= Generate Stock Report =================
-# def generate_stock_report(df_prev, df_curr):
-#     merged_df = pd.merge(
-#         df_curr,
-#         df_prev,
-#         on='product_name',
-#         how='left',
-#         suffixes=('_current', '_previous')
-#     )
-
-#     results = []
-#     for _, p in merged_df.iterrows():
-#         name = p['product_name']
-#         stock = p['stock_level_current']
-#         last_stock = p.get('stock_level_previous', stock)
-
-#         weekly_sale = max(last_stock - stock, 1)
-#         decrease_rate = (last_stock - stock) / last_stock * 100 if last_stock > 0 else 0
-#         weeks_to_empty = round(stock / max(weekly_sale, 1), 2)
-
-#         min_stock = manual_minstock.get(name, int(weekly_sale * WEEKS_TO_COVER * SAFETY_FACTOR))
-
-#         dynamic_buffer = 20 if decrease_rate > 50 else 10 if decrease_rate > 20 else 5
-#         dynamic_buffer = min(dynamic_buffer, MAX_BUFFER)
-#         buffer = manual_buffer.get(name, dynamic_buffer)
-
-#         reorder_qty = max(min_stock + buffer - stock, int(weekly_sale * SAFETY_FACTOR))
-
-#         state = "Green"
-#         desc = "Stock is sufficient"
-#         if stock < min_stock or decrease_rate > 50:
-#             state = "Red"
-#             desc = f"Decreasing rapidly and nearly out of stock! Recommend restocking {reorder_qty} units"
-#         elif decrease_rate > 20:
-#             state = "Yellow"
-#             desc = f"Decreasing rapidly, should prepare to restock. Recommend restocking {reorder_qty} units"
-
-#         results.append({
-#             "Product": name,
-#             "Stock": stock,
-#             "Last_Stock": last_stock,
-#             "Decrease_Rate(%)": round(decrease_rate, 1),
-#             "Weeks_To_Empty": weeks_to_empty,
-#             "MinStock": min_stock,
-#             "Buffer": buffer,
-#             "Reorder_Qty": reorder_qty,
-#             "Status": state,
-#             "Description": desc
-#         })
-
-#     return pd.DataFrame(results)
 def generate_stock_report(df_prev, df_curr):
     """
     df_curr: columns ['product_name', 'stock_level']
