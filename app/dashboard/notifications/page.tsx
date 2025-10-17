@@ -117,7 +117,7 @@ export default function NotificationsPage() {
                 ? "Decreasing Rapidly"
                 : "Stock is Enough",
             product: item.Product,
-            sku: item.Product,
+            sku: item.Product_SKU || item.Product,
             estimatedTime: `${item.Weeks_To_Empty} weeks`,
             recommendUnits: item.Reorder_Qty,
             currentStock: item.Stock,
@@ -292,7 +292,7 @@ export default function NotificationsPage() {
                 ? "Decreasing Rapidly"
                 : "Stock is Enough",
             product: item.Product,
-            sku: item.Product,
+            sku: item.Product_SKU || item.Product,
             estimatedTime: `${item.Weeks_To_Empty} weeks`,
             recommendUnits: item.Reorder_Qty,
             currentStock: item.Stock,

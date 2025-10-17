@@ -337,7 +337,7 @@ async def upload_stock_files(
         # Calculate flags based on stock changes
         print("[Backend] Calculating stock flags...")
         for idx, row in report_df.iterrows():
-            product_name = row.get('Product', '')
+            product_sku = row.get('Product_SKU', '')
             current_stock_level = row.get('Stock', 0)
             last_stock_level = row.get('Last_Stock', 0)
             
@@ -346,7 +346,7 @@ async def upload_stock_files(
             prev_flag = 'stage'
             
             if base_stock_exists and not df_prev.empty:
-                prev_row = df_prev[df_prev['product_name'] == product_name]
+                prev_row = df_prev[df_prev['product_sku'] == product_sku]
                 if not prev_row.empty:
                     prev_counter = prev_row.iloc[0].get('unchanged_counter', 0)
                     prev_flag = prev_row.iloc[0].get('flag', 'stage')
@@ -372,21 +372,21 @@ async def upload_stock_files(
         
         print("[Backend] Updating base_stock table...")
         
-        # Create a mapping of product names to their flags
-        flag_map = dict(zip(report_df['Product'], report_df['flag']))
-        counter_map = dict(zip(report_df['Product'], report_df['unchanged_counter']))
+        # Create a mapping of product SKUs to their flags
+        flag_map = dict(zip(report_df['Product_SKU'], report_df['flag']))
+        counter_map = dict(zip(report_df['Product_SKU'], report_df['unchanged_counter']))
         
         # Build base_stock_df with proper alignment
         base_stock_data = []
         for idx, row in df_curr.iterrows():
-            product_name = row.get('product_name', '')
+            product_sku = row.get('product_sku', '')
             base_stock_data.append({
-                'product_name': product_name,
-                'product_sku': row.get('product_sku', ''),
+                'product_name': row.get('product_name', ''),
+                'product_sku': product_sku,
                 'stock_level': row.get('stock_level', 0),
                 'หมวดหมู่': row.get('category', ''),
-                'unchanged_counter': counter_map.get(product_name, 0),
-                'flag': flag_map.get(product_name, 'stage'),
+                'unchanged_counter': counter_map.get(product_sku, 0),
+                'flag': flag_map.get(product_sku, 'stage'),
                 'updated_at': datetime.now()
             })
         

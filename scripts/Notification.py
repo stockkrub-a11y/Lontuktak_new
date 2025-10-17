@@ -14,7 +14,7 @@ MAX_BUFFER = 50
 # ================= Get latest stock per product =================
 def get_data(week_date):
     query = f"""
-        SELECT product_name, stock_level
+        SELECT product_name, product_sku, stock_level
         FROM stock_data
         WHERE week_date = '{week_date}'
         AND uploaded_at = (
@@ -30,18 +30,18 @@ def get_data(week_date):
 # ================= Generate Stock Report =================
 def generate_stock_report(df_prev, df_curr):
     """
-    df_curr: columns ['product_name', 'stock_level']
-    df_prev: columns ['product_name', 'stock_level']
+    df_curr: columns ['product_name', 'product_sku', 'stock_level']
+    df_prev: columns ['product_name', 'product_sku', 'stock_level']
     """
     # Build a lookup from previous snapshot (keep last occurrence of duplicates)
-    df_prev_unique = df_prev.drop_duplicates(subset='product_name', keep='last')
-    prev_lookup = df_prev_unique.set_index('product_name')['stock_level']
+    df_prev_unique = df_prev.drop_duplicates(subset='product_sku', keep='last')
+    prev_lookup = df_prev_unique.set_index('product_sku')['stock_level']
 
-    curr = df_curr.drop_duplicates(subset='product_name', keep='last').copy()
-    curr.rename(columns={'product_name': 'Product', 'stock_level': 'Stock'}, inplace=True)
+    curr = df_curr.drop_duplicates(subset='product_sku', keep='last').copy()
+    curr.rename(columns={'product_name': 'Product', 'product_sku': 'Product_SKU', 'stock_level': 'Stock'}, inplace=True)
 
     # Last_Stock = previous snapshot if available, else fall back to current stock
-    curr['Last_Stock'] = curr['Product'].map(prev_lookup).fillna(curr['Stock'])
+    curr['Last_Stock'] = curr['Product_SKU'].map(prev_lookup).fillna(curr['Stock'])
 
     # Weekly sales and decrease rate
     curr['Weekly_Sale'] = (curr['Last_Stock'] - curr['Stock']).clip(lower=1)
@@ -88,7 +88,7 @@ def generate_stock_report(df_prev, df_curr):
         )
     )
 
-    return curr[['Product', 'Stock', 'Last_Stock', 'Decrease_Rate(%)', 'Weeks_To_Empty',
+    return curr[['Product', 'Product_SKU', 'Stock', 'Last_Stock', 'Decrease_Rate(%)', 'Weeks_To_Empty',
                  'MinStock', 'Buffer', 'Reorder_Qty', 'Status', 'Description']].reset_index(drop=True)
 
 # ================= Get Notifications =================
