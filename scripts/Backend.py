@@ -443,9 +443,7 @@ async def update_manual_values_endpoint(
         if not engine:
             raise HTTPException(status_code=500, detail="Database not available")
         
-        update_manual_values(product_sku, minstock, buffer)
-        
-        query = text("SELECT * FROM stock_notifications WHERE \"Product_SKU\" = :sku")
+        query = text("SELECT * FROM stock_notifications WHERE Product_SKU = :sku")
         df_notification = pd.read_sql(query, engine, params={"sku": product_sku})
         
         if df_notification.empty:
@@ -464,7 +462,7 @@ async def update_manual_values_endpoint(
         if minstock is not None:
             new_minstock = minstock
         else:
-            new_minstock = int(weekly_sale * 4 * 1.5)  # Assuming WEEKS_TO_COVER = 4 and SAFETY_FACTOR = 1.5
+            new_minstock = int(weekly_sale * 2 * 1.5)  # WEEKS_TO_COVER = 2, SAFETY_FACTOR = 1.5
         
         if buffer is not None:
             new_buffer = buffer
@@ -475,7 +473,7 @@ async def update_manual_values_endpoint(
                 new_buffer = 10
             else:
                 new_buffer = 5
-            new_buffer = min(new_buffer, 20)  # Assuming MAX_BUFFER = 20
+            new_buffer = min(new_buffer, 50)  # MAX_BUFFER = 50
         
         # Calculate new reorder quantity
         default_reorder = int(weekly_sale * 1.5)

@@ -611,9 +611,12 @@ export default function NotificationsPage() {
                         <span className={getStatusTextColor(notification.status)}>{notification.title}</span> -{" "}
                         {notification.sku}
                       </h3>
-                      <p className="text-sm text-[#938d7a]">
-                        {notification.product} • {notification.category}
-                      </p>
+                      <div className="flex items-center gap-2 mb-1">
+                        <p className="text-sm text-[#938d7a]">{notification.product}</p>
+                        <span className="px-2 py-0.5 bg-[#efece3] text-[#938d7a] text-xs rounded-full font-medium">
+                          {notification.category}
+                        </span>
+                      </div>
                       <p className="text-sm text-[#938d7a] mt-1">
                         Estimated to run out in{" "}
                         <span className={getStatusTextColor(notification.status)}>{notification.estimatedTime}</span>
@@ -645,6 +648,9 @@ export default function NotificationsPage() {
               <div>
                 <div className="flex items-center gap-3 mb-2">
                   <h3 className="text-xl font-bold text-black">{selectedNotification.sku}</h3>
+                  <span className="px-3 py-1 bg-[#efece3] text-[#938d7a] text-sm rounded-full font-medium">
+                    {selectedNotification.category}
+                  </span>
                   <span
                     className={`text-xs px-2 py-1 rounded ${
                       selectedNotification.status === "critical"
@@ -662,7 +668,7 @@ export default function NotificationsPage() {
                   </span>
                 </div>
                 <p className="text-sm text-[#938d7a]">{selectedNotification.product}</p>
-                <p className="text-xs text-[#938d7a]">{selectedNotification.category} • Updated 5m ago</p>
+                <p className="text-xs text-[#938d7a]">Updated 5m ago</p>
               </div>
               <button onClick={() => setSelectedNotification(null)} className="text-[#938d7a] hover:text-black">
                 <X className="w-5 h-5" />

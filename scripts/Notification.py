@@ -30,17 +30,20 @@ def get_data(week_date):
 # ================= Generate Stock Report =================
 def generate_stock_report(df_prev, df_curr):
     """
-    df_curr: columns ['product_sku', 'stock_level', 'category']
-    df_prev: columns ['product_sku', 'stock_level', 'category']
+    df_curr: columns ['product_name', 'product_sku', 'stock_level', 'category']
+    df_prev: columns ['product_name', 'product_sku', 'stock_level', 'category']
     """
     df_prev_unique = df_prev.drop_duplicates(subset='product_sku', keep='last')
     prev_lookup = df_prev_unique.set_index('product_sku')['stock_level']
     
+    name_lookup = df_curr.drop_duplicates(subset='product_sku', keep='last').set_index('product_sku')['product_name']
     category_lookup = df_curr.drop_duplicates(subset='product_sku', keep='last').set_index('product_sku')['category']
 
     curr = df_curr.drop_duplicates(subset='product_sku', keep='last').copy()
+    
     curr.rename(columns={
         'product_sku': 'Product_SKU', 
+        'product_name': 'Product',
         'stock_level': 'Stock',
         'category': 'Category'
     }, inplace=True)
@@ -93,7 +96,7 @@ def generate_stock_report(df_prev, df_curr):
         )
     )
 
-    return curr[['Product_SKU', 'Category', 'Stock', 'Last_Stock', 'Decrease_Rate(%)', 'Weeks_To_Empty',
+    return curr[['Product', 'Product_SKU', 'Category', 'Stock', 'Last_Stock', 'Decrease_Rate(%)', 'Weeks_To_Empty',
                  'MinStock', 'Buffer', 'Reorder_Qty', 'Status', 'Description']].reset_index(drop=True)
 
 def update_manual_values(product_sku: str, minstock: int = None, buffer: int = None):
