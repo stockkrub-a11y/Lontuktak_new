@@ -1,6 +1,7 @@
 # ================= Backend: Postgres Version =================
 import pandas as pd
 from DB_server import engine  # your SQLAlchemy engine
+import numpy as np
 
 # Manual overrides
 manual_minstock = {}  # {'Product': value}
@@ -27,56 +28,117 @@ def get_data(week_date):
     return df
 
 # ================= Generate Stock Report =================
+# def generate_stock_report(df_prev, df_curr):
+#     merged_df = pd.merge(
+#         df_curr,
+#         df_prev,
+#         on='product_name',
+#         how='left',
+#         suffixes=('_current', '_previous')
+#     )
+
+#     results = []
+#     for _, p in merged_df.iterrows():
+#         name = p['product_name']
+#         stock = p['stock_level_current']
+#         last_stock = p.get('stock_level_previous', stock)
+
+#         weekly_sale = max(last_stock - stock, 1)
+#         decrease_rate = (last_stock - stock) / last_stock * 100 if last_stock > 0 else 0
+#         weeks_to_empty = round(stock / max(weekly_sale, 1), 2)
+
+#         min_stock = manual_minstock.get(name, int(weekly_sale * WEEKS_TO_COVER * SAFETY_FACTOR))
+
+#         dynamic_buffer = 20 if decrease_rate > 50 else 10 if decrease_rate > 20 else 5
+#         dynamic_buffer = min(dynamic_buffer, MAX_BUFFER)
+#         buffer = manual_buffer.get(name, dynamic_buffer)
+
+#         reorder_qty = max(min_stock + buffer - stock, int(weekly_sale * SAFETY_FACTOR))
+
+#         state = "Green"
+#         desc = "Stock is sufficient"
+#         if stock < min_stock or decrease_rate > 50:
+#             state = "Red"
+#             desc = f"Decreasing rapidly and nearly out of stock! Recommend restocking {reorder_qty} units"
+#         elif decrease_rate > 20:
+#             state = "Yellow"
+#             desc = f"Decreasing rapidly, should prepare to restock. Recommend restocking {reorder_qty} units"
+
+#         results.append({
+#             "Product": name,
+#             "Stock": stock,
+#             "Last_Stock": last_stock,
+#             "Decrease_Rate(%)": round(decrease_rate, 1),
+#             "Weeks_To_Empty": weeks_to_empty,
+#             "MinStock": min_stock,
+#             "Buffer": buffer,
+#             "Reorder_Qty": reorder_qty,
+#             "Status": state,
+#             "Description": desc
+#         })
+
+#     return pd.DataFrame(results)
 def generate_stock_report(df_prev, df_curr):
-    merged_df = pd.merge(
-        df_curr,
-        df_prev,
-        on='product_name',
-        how='left',
-        suffixes=('_current', '_previous')
+    """
+    df_curr: columns ['product_name', 'stock_level']
+    df_prev: columns ['product_name', 'stock_level']
+    """
+    # Build a lookup from previous snapshot
+    prev_lookup = df_prev.set_index('product_name')['stock_level']
+
+    curr = df_curr.copy()
+    curr.rename(columns={'product_name': 'Product', 'stock_level': 'Stock'}, inplace=True)
+
+    # Last_Stock = previous snapshot if available, else fall back to current stock
+    curr['Last_Stock'] = curr['Product'].map(prev_lookup).fillna(curr['Stock'])
+
+    # Weekly sales and decrease rate
+    curr['Weekly_Sale'] = (curr['Last_Stock'] - curr['Stock']).clip(lower=1)
+    curr['Decrease_Rate(%)'] = np.where(
+        curr['Last_Stock'] > 0,
+        (curr['Last_Stock'] - curr['Stock']) / curr['Last_Stock'] * 100,
+        0
+    ).round(1)
+
+    # Weeks to empty
+    curr['Weeks_To_Empty'] = (curr['Stock'] / curr['Weekly_Sale']).round(2)
+
+    # MinStock: manual override, else formula
+    default_min = (curr['Weekly_Sale'] * WEEKS_TO_COVER * SAFETY_FACTOR).astype(int)
+    manual_min = curr['Product'].map(manual_minstock)
+    curr['MinStock'] = np.where(manual_min.notna(), manual_min, default_min).astype(int)
+
+    # Buffer: dynamic by decrease rate, capped; manual override if present
+    dyn_buf = np.select(
+        [curr['Decrease_Rate(%)'] > 50, curr['Decrease_Rate(%)'] > 20],
+        [20, 10],
+        default=5
+    )
+    dyn_buf = np.minimum(dyn_buf, MAX_BUFFER)
+    manual_buf = curr['Product'].map(manual_buffer)
+    curr['Buffer'] = np.where(manual_buf.notna(), manual_buf, dyn_buf).astype(int)
+
+    # Reorder quantity (at least SAFETY_FACTOR * weekly sale)
+    default_reorder = (curr['Weekly_Sale'] * SAFETY_FACTOR).astype(int)
+    curr['Reorder_Qty'] = np.maximum(curr['MinStock'] + curr['Buffer'] - curr['Stock'], default_reorder).astype(int)
+
+    # Status + Description
+    is_red = (curr['Stock'] < curr['MinStock']) | (curr['Decrease_Rate(%)'] > 50)
+    is_yellow = (~is_red) & (curr['Decrease_Rate(%)'] > 20)
+
+    curr['Status'] = np.where(is_red, 'Red', np.where(is_yellow, 'Yellow', 'Green'))
+    curr['Description'] = np.where(
+        is_red,
+        'Decreasing rapidly and nearly out of stock! Recommend restocking ' + curr['Reorder_Qty'].astype(str) + ' units',
+        np.where(
+            is_yellow,
+            'Decreasing rapidly, should prepare to restock. Recommend restocking ' + curr['Reorder_Qty'].astype(str) + ' units',
+            'Stock is sufficient'
+        )
     )
 
-    results = []
-    for _, p in merged_df.iterrows():
-        name = p['product_name']
-        stock = p['stock_level_current']
-        last_stock = p.get('stock_level_previous', stock)
-
-        weekly_sale = max(last_stock - stock, 1)
-        decrease_rate = (last_stock - stock) / last_stock * 100 if last_stock > 0 else 0
-        weeks_to_empty = round(stock / max(weekly_sale, 1), 2)
-
-        min_stock = manual_minstock.get(name, int(weekly_sale * WEEKS_TO_COVER * SAFETY_FACTOR))
-
-        dynamic_buffer = 20 if decrease_rate > 50 else 10 if decrease_rate > 20 else 5
-        dynamic_buffer = min(dynamic_buffer, MAX_BUFFER)
-        buffer = manual_buffer.get(name, dynamic_buffer)
-
-        reorder_qty = max(min_stock + buffer - stock, int(weekly_sale * SAFETY_FACTOR))
-
-        state = "Green"
-        desc = "Stock is sufficient"
-        if stock < min_stock or decrease_rate > 50:
-            state = "Red"
-            desc = f"Decreasing rapidly and nearly out of stock! Recommend restocking {reorder_qty} units"
-        elif decrease_rate > 20:
-            state = "Yellow"
-            desc = f"Decreasing rapidly, should prepare to restock. Recommend restocking {reorder_qty} units"
-
-        results.append({
-            "Product": name,
-            "Stock": stock,
-            "Last_Stock": last_stock,
-            "Decrease_Rate(%)": round(decrease_rate, 1),
-            "Weeks_To_Empty": weeks_to_empty,
-            "MinStock": min_stock,
-            "Buffer": buffer,
-            "Reorder_Qty": reorder_qty,
-            "Status": state,
-            "Description": desc
-        })
-
-    return pd.DataFrame(results)
+    return curr[['Product', 'Stock', 'Last_Stock', 'Decrease_Rate(%)', 'Weeks_To_Empty',
+                 'MinStock', 'Buffer', 'Reorder_Qty', 'Status', 'Description']].reset_index(drop=True)
 
 # ================= Get Notifications =================
 def get_notifications():
