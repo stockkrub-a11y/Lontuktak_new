@@ -368,7 +368,7 @@ async def upload_stock_files(
         # Save report to stock_notifications table
         print("[Backend] Saving to stock_notifications table...")
         report_df['created_at'] = datetime.now()
-        report_df.to_sql('stock_notifications', engine, if_exists='append', index=False)
+        report_df.to_sql('stock_notifications', engine, if_exists='replace', index=False)
         
         print("[Backend] Updating base_stock table...")
         
