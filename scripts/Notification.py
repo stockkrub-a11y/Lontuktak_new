@@ -33,10 +33,11 @@ def generate_stock_report(df_prev, df_curr):
     df_curr: columns ['product_name', 'stock_level']
     df_prev: columns ['product_name', 'stock_level']
     """
-    # Build a lookup from previous snapshot
-    prev_lookup = df_prev.set_index('product_name')['stock_level']
+    # Build a lookup from previous snapshot (keep last occurrence of duplicates)
+    df_prev_unique = df_prev.drop_duplicates(subset='product_name', keep='last')
+    prev_lookup = df_prev_unique.set_index('product_name')['stock_level']
 
-    curr = df_curr.copy()
+    curr = df_curr.drop_duplicates(subset='product_name', keep='last').copy()
     curr.rename(columns={'product_name': 'Product', 'stock_level': 'Stock'}, inplace=True)
 
     # Last_Stock = previous snapshot if available, else fall back to current stock

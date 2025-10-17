@@ -208,8 +208,7 @@ async def get_notifications():
         print("Database engine available, executing query...", flush=True)
         sys.stdout.flush()
         
-        # Simple query to get all notifications
-        query = "SELECT * FROM stock_notifications ORDER BY created_at DESC LIMIT 100"
+        query = "SELECT * FROM stock_notifications ORDER BY created_at DESC"
         print(f"Query: {query}", flush=True)
         sys.stdout.flush()
         
