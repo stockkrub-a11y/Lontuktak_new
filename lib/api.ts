@@ -376,6 +376,19 @@ export async function getAnalysisBaseSKUs(search = "") {
   }
 }
 
+export async function getAnalysisPerformanceProducts(search = "") {
+  try {
+    return await apiFetch<{
+      success: boolean
+      categories: Record<string, Array<{ product_sku: string; product_name: string }>>
+      all_products: Array<{ product_sku: string; product_name: string; category: string }>
+    }>(`/analysis/performance-products?search=${encodeURIComponent(search)}`)
+  } catch (error) {
+    console.error("[v0] Failed to fetch performance products:", error)
+    return { success: false, categories: {}, all_products: [] }
+  }
+}
+
 export async function checkBaseStock() {
   try {
     return await apiFetch<{

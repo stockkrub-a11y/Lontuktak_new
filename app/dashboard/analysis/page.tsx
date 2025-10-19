@@ -37,6 +37,7 @@ import {
   getAnalysisBestSellers,
   getAnalysisTotalIncome,
   getAnalysisBaseSKUs,
+  getAnalysisPerformanceProducts, // Added import for performance products
 } from "@/lib/api"
 
 export default function AnalysisPage() {
@@ -215,37 +216,62 @@ export default function AnalysisPage() {
 
   const loadAvailableProducts = async () => {
     try {
-      console.log("[v0] Loading available products from database...")
-      const searchParam = productSearch.trim() ? `?search=${encodeURIComponent(productSearch)}` : ""
-      const url = `${process.env.NEXT_PUBLIC_API_URL}/analysis/performance-products${searchParam}`
-      console.log("[v0] Fetching from URL:", url)
+      const data = await getAnalysisPerformanceProducts("")
 
-      const response = await fetch(url)
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-
-      const data = await response.json()
-      console.log("[v0] Received data from backend:", data)
-
-      if (data && data.success) {
-        console.log("[v0] Categories found:", Object.keys(data.categories))
-        console.log("[v0] Total products:", data.all_products.length)
+      if (data.success) {
         setProductCategories(data.categories)
         setAllProducts(data.all_products)
-
-        // Auto-select first 3 products if none selected
-        if (selectedProducts.length === 0 && data.all_products.length > 0) {
-          const firstThree = data.all_products.slice(0, 3).map((p: any) => p.product_sku)
-          console.log("[v0] Auto-selecting first 3 products:", firstThree)
-          setSelectedProducts(firstThree)
-        }
+        setBackendConnected(true)
+        setShowOfflineBanner(false)
       } else {
-        console.log("[v0] Backend returned success=false or no data")
+        setProductCategories({})
+        setAllProducts([])
       }
     } catch (error) {
-      console.error("[v0] Error loading available products:", error)
+      console.error("Error loading available products:", error)
+      setBackendConnected(false)
+      setShowOfflineBanner(true)
+      setProductCategories({})
+      setAllProducts([])
+    }
+  }
+
+  const handleProductSearch = async (searchTerm: string) => {
+    setProductSearch(searchTerm)
+
+    if (!searchTerm.trim()) {
+      // Reload all products when search is cleared
+      loadAvailableProducts()
+      return
+    }
+
+    try {
+      const data = await getAnalysisPerformanceProducts(searchTerm)
+
+      if (data.success) {
+        setProductCategories(data.categories)
+        setAllProducts(data.all_products)
+      }
+    } catch (error) {
+      console.error("Error searching products:", error)
+    }
+  }
+
+  const toggleCategory = (category: string) => {
+    const newExpanded = new Set(expandedCategories)
+    if (newExpanded.has(category)) {
+      newExpanded.delete(category)
+    } else {
+      newExpanded.add(category)
+    }
+    setExpandedCategories(newExpanded)
+  }
+
+  const handleProductSelect = (sku: string) => {
+    if (selectedProducts.includes(sku)) {
+      setSelectedProducts(selectedProducts.filter((s) => s !== sku))
+    } else if (selectedProducts.length < 3) {
+      setSelectedProducts([...selectedProducts, sku])
     }
   }
 
@@ -286,34 +312,6 @@ export default function AnalysisPage() {
       document.removeEventListener("mousedown", handleClickOutside)
     }
   }, [showProductDropdown])
-
-  const toggleProduct = (product: string) => {
-    setSelectedProducts((prev) => {
-      if (prev.includes(product)) {
-        if (prev.length > 1) {
-          return prev.filter((p) => p !== product)
-        }
-        return prev
-      } else {
-        if (prev.length < 3) {
-          return [...prev, product]
-        }
-        return prev
-      }
-    })
-  }
-
-  const toggleCategory = (category: string) => {
-    setExpandedCategories((prev) => {
-      const newSet = new Set(prev)
-      if (newSet.has(category)) {
-        newSet.delete(category)
-      } else {
-        newSet.add(category)
-      }
-      return newSet
-    })
-  }
 
   const getFilteredProducts = () => {
     if (productSearch) {
@@ -874,7 +872,7 @@ export default function AnalysisPage() {
               type="text"
               placeholder="Search by SKU..."
               value={productSearch}
-              onChange={(e) => setProductSearch(e.target.value)}
+              onChange={(e) => handleProductSearch(e.target.value)}
               className="w-full px-3 py-2 mb-4 rounded-lg border border-[#cecabf] text-sm text-black outline-none focus:border-[#938d7a]"
             />
 
@@ -886,7 +884,7 @@ export default function AnalysisPage() {
                   getFilteredProducts().map((product) => (
                     <button
                       key={product.product_sku}
-                      onClick={() => toggleProduct(product.product_sku)}
+                      onClick={() => handleProductSelect(product.product_sku)}
                       disabled={!selectedProducts.includes(product.product_sku) && selectedProducts.length >= 3}
                       className={`w-full text-left px-4 py-3 rounded-lg border transition-all ${
                         selectedProducts.includes(product.product_sku)
@@ -935,7 +933,7 @@ export default function AnalysisPage() {
                           {productCategories[category].map((product) => (
                             <button
                               key={product.product_sku}
-                              onClick={() => toggleProduct(product.product_sku)}
+                              onClick={() => handleProductSelect(product.product_sku)}
                               disabled={!selectedProducts.includes(product.product_sku) && selectedProducts.length >= 3}
                               className={`w-full text-left px-6 py-2.5 border-t border-[#efece3] transition-all ${
                                 selectedProducts.includes(product.product_sku)
