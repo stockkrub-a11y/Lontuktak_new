@@ -44,7 +44,7 @@ export default function AnalysisPage() {
   const [selectedProducts, setSelectedProducts] = useState<string[]>([])
   const [productCategories, setProductCategories] = useState<Record<string, any[]>>({})
   const [allProducts, setAllProducts] = useState<any[]>([])
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set())
   const [showProductDropdown, setShowProductDropdown] = useState(false)
   const [productSearch, setProductSearch] = useState("")
   const dropdownRef = useRef<HTMLDivElement>(null)
@@ -288,6 +288,18 @@ export default function AnalysisPage() {
     })
   }
 
+  const toggleCategory = (category: string) => {
+    setExpandedCategories((prev) => {
+      const newSet = new Set(prev)
+      if (newSet.has(category)) {
+        newSet.delete(category)
+      } else {
+        newSet.add(category)
+      }
+      return newSet
+    })
+  }
+
   const getFilteredProducts = () => {
     if (productSearch) {
       // When searching, show all matching products
@@ -297,13 +309,8 @@ export default function AnalysisPage() {
           product.product_name.toLowerCase().includes(productSearch.toLowerCase()) ||
           product.category.toLowerCase().includes(productSearch.toLowerCase()),
       )
-    } else if (selectedCategory) {
-      // When category is selected, show products in that category
-      return productCategories[selectedCategory] || []
-    } else {
-      // Show all products
-      return allProducts
     }
+    return []
   }
 
   return (
@@ -862,41 +869,10 @@ export default function AnalysisPage() {
               className="w-full px-3 py-2 mb-4 rounded-lg border border-[#cecabf] text-sm text-black outline-none focus:border-[#938d7a]"
             />
 
-            {!productSearch && !selectedCategory ? (
-              // Show categories
+            {productSearch ? (
+              // Show search results as flat list
               <div className="space-y-2">
-                <p className="text-xs text-[#938d7a] mb-2">Select a category:</p>
-                {Object.keys(productCategories).length > 0 ? (
-                  Object.keys(productCategories).map((category) => (
-                    <button
-                      key={category}
-                      onClick={() => setSelectedCategory(category)}
-                      className="w-full text-left px-4 py-3 rounded-lg border border-[#efece3] bg-white hover:bg-[#f8f5ee] text-black transition-all"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="font-medium">{category}</span>
-                        <span className="text-xs text-[#938d7a]">{productCategories[category].length} products</span>
-                      </div>
-                    </button>
-                  ))
-                ) : (
-                  <p className="text-center text-[#938d7a] py-4">No categories available</p>
-                )}
-              </div>
-            ) : (
-              // Show products
-              <div className="space-y-2">
-                {selectedCategory && !productSearch && (
-                  <button
-                    onClick={() => setSelectedCategory(null)}
-                    className="text-sm text-[#938d7a] hover:text-black mb-2 flex items-center gap-1"
-                  >
-                    ← Back to categories
-                  </button>
-                )}
-                <p className="text-xs text-[#938d7a] mb-2">
-                  {selectedCategory ? `Products in ${selectedCategory}:` : "Search results:"}
-                </p>
+                <p className="text-xs text-[#938d7a] mb-2">Search results:</p>
                 {getFilteredProducts().length > 0 ? (
                   getFilteredProducts().map((product) => (
                     <button
@@ -922,6 +898,60 @@ export default function AnalysisPage() {
                   ))
                 ) : (
                   <p className="text-center text-[#938d7a] py-4">No products found</p>
+                )}
+              </div>
+            ) : (
+              // Show hierarchical category structure
+              <div className="space-y-2">
+                <p className="text-xs text-[#938d7a] mb-2">Select by category:</p>
+                {Object.keys(productCategories).length > 0 ? (
+                  Object.keys(productCategories).map((category) => (
+                    <div key={category} className="border border-[#efece3] rounded-lg overflow-hidden">
+                      {/* Category Header - Clickable to expand/collapse */}
+                      <button
+                        onClick={() => toggleCategory(category)}
+                        className="w-full text-left px-4 py-3 bg-[#f8f5ee] hover:bg-[#efece3] text-black transition-all flex items-center justify-between"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-base">{category}</span>
+                          <span className="text-xs text-[#938d7a] bg-white px-2 py-0.5 rounded-full">
+                            {productCategories[category].length} products
+                          </span>
+                        </div>
+                        <span className="text-[#938d7a]">{expandedCategories.has(category) ? "▼" : "▶"}</span>
+                      </button>
+
+                      {/* Products List - Only shown when category is expanded */}
+                      {expandedCategories.has(category) && (
+                        <div className="bg-white">
+                          {productCategories[category].map((product) => (
+                            <button
+                              key={product.product_sku}
+                              onClick={() => toggleProduct(product.product_sku)}
+                              disabled={!selectedProducts.includes(product.product_sku) && selectedProducts.length >= 3}
+                              className={`w-full text-left px-6 py-2.5 border-t border-[#efece3] transition-all ${
+                                selectedProducts.includes(product.product_sku)
+                                  ? "bg-[#cecabf] text-black"
+                                  : "bg-white text-black hover:bg-[#f8f5ee]"
+                              } disabled:opacity-50 disabled:cursor-not-allowed`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <p className="font-medium text-sm">{product.product_sku}</p>
+                                  <p className="text-xs text-[#938d7a]">{product.product_name || "N/A"}</p>
+                                </div>
+                                {selectedProducts.includes(product.product_sku) && (
+                                  <span className="text-xs bg-white px-2 py-1 rounded">✓</span>
+                                )}
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-center text-[#938d7a] py-4">No categories available</p>
                 )}
               </div>
             )}
