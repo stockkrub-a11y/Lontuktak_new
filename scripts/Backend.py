@@ -1044,6 +1044,91 @@ async def get_performance_products(search: str = Query("", description="Search t
         traceback.print_exc()
         return {"success": False, "categories": {}, "all_products": []}
 
+@app.get("/analysis/total_income")
+async def get_total_income():
+    """Get total income analysis from base_data table"""
+    try:
+        if not engine:
+            return {"success": False, "message": "Database not available"}
+        
+        print("[Backend] Fetching total income data from base_data...")
+        
+        # Query to get monthly income totals
+        query = text("""
+            SELECT 
+                sales_year,
+                sales_month,
+                SUM(total_quantity * price) as total_income
+            FROM base_data
+            WHERE price IS NOT NULL
+            GROUP BY sales_year, sales_month
+            ORDER BY sales_year, sales_month
+        """)
+        
+        with engine.connect() as conn:
+            result = conn.execute(query)
+            monthly_data = result.fetchall()
+        
+        if not monthly_data:
+            return {
+                "success": False,
+                "message": "No income data found in base_data table"
+            }
+        
+        # Format chart data
+        chart_data = []
+        for row in monthly_data:
+            chart_data.append({
+                "month": f"{row[0]}-{row[1]:02d}",
+                "total_income": float(row[2]) if row[2] else 0
+            })
+        
+        # Query to get product-level income data
+        product_query = text("""
+            SELECT 
+                product_name,
+                AVG(total_quantity * price) as avg_monthly_revenue,
+                SUM(total_quantity) as total_quantity
+            FROM base_data
+            WHERE price IS NOT NULL AND product_name IS NOT NULL
+            GROUP BY product_name
+            ORDER BY avg_monthly_revenue DESC
+        """)
+        
+        with engine.connect() as conn:
+            result = conn.execute(product_query)
+            product_data = result.fetchall()
+        
+        # Format table data
+        table_data = []
+        for row in product_data:
+            table_data.append({
+                "Product_name": row[0],
+                "Avg_Monthly_Revenue_Baht": float(row[1]) if row[1] else 0,
+                "Total_Quantity": int(row[2]) if row[2] else 0
+            })
+        
+        # Calculate grand total
+        grand_total = sum(item["total_income"] for item in chart_data)
+        
+        print(f"[Backend] ✅ Total income calculated: ฿{grand_total:,.2f}")
+        
+        return {
+            "success": True,
+            "chart_data": chart_data,
+            "table_data": table_data,
+            "grand_total": grand_total
+        }
+        
+    except Exception as e:
+        print(f"[Backend] ❌ Error fetching total income: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return {
+            "success": False,
+            "message": f"Error: {str(e)}"
+        }
+
 # ============================================================================
 # TRAIN AND PREDICT ENDPOINTS
 # ============================================================================
