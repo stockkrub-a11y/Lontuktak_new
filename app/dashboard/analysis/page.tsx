@@ -216,7 +216,14 @@ export default function AnalysisPage() {
   const loadAvailableProducts = async () => {
     try {
       const searchParam = productSearch.trim() ? `?search=${encodeURIComponent(productSearch)}` : ""
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/analysis/performance-products${searchParam}`)
+      const url = `${process.env.NEXT_PUBLIC_API_URL}/analysis/performance-products${searchParam}`
+
+      const response = await fetch(url)
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
       const data = await response.json()
 
       if (data && data.success) {
@@ -225,7 +232,8 @@ export default function AnalysisPage() {
 
         // Auto-select first 3 products if none selected
         if (selectedProducts.length === 0 && data.all_products.length > 0) {
-          setSelectedProducts(data.all_products.slice(0, 3).map((p: any) => p.product_sku))
+          const firstThree = data.all_products.slice(0, 3).map((p: any) => p.product_sku)
+          setSelectedProducts(firstThree)
         }
       }
     } catch (error) {
