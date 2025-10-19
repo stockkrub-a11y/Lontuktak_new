@@ -1053,14 +1053,14 @@ async def get_total_income():
         
         print("[Backend] Fetching total income data from base_data...")
         
-        # Query to get monthly income totals
+        # Query to get monthly sales totals (quantity-based since no price in base_data)
         query = text("""
             SELECT 
                 sales_year,
                 sales_month,
-                SUM(total_quantity * price) as total_income
+                SUM(total_quantity) as total_quantity
             FROM base_data
-            WHERE price IS NOT NULL
+            WHERE total_quantity IS NOT NULL
             GROUP BY sales_year, sales_month
             ORDER BY sales_year, sales_month
         """)
@@ -1072,7 +1072,7 @@ async def get_total_income():
         if not monthly_data:
             return {
                 "success": False,
-                "message": "No income data found in base_data table"
+                "message": "No sales data found in base_data table"
             }
         
         # Format chart data
@@ -1083,16 +1083,16 @@ async def get_total_income():
                 "total_income": float(row[2]) if row[2] else 0
             })
         
-        # Query to get product-level income data
+        # Query to get product-level sales data
         product_query = text("""
             SELECT 
                 product_name,
-                AVG(total_quantity * price) as avg_monthly_revenue,
+                AVG(total_quantity) as avg_monthly_quantity,
                 SUM(total_quantity) as total_quantity
             FROM base_data
-            WHERE price IS NOT NULL AND product_name IS NOT NULL
+            WHERE product_name IS NOT NULL
             GROUP BY product_name
-            ORDER BY avg_monthly_revenue DESC
+            ORDER BY total_quantity DESC
         """)
         
         with engine.connect() as conn:
@@ -1111,7 +1111,7 @@ async def get_total_income():
         # Calculate grand total
         grand_total = sum(item["total_income"] for item in chart_data)
         
-        print(f"[Backend] ✅ Total income calculated: ฿{grand_total:,.2f}")
+        print(f"[Backend] ✅ Total quantity sold: {grand_total:,.0f} units")
         
         return {
             "success": True,
@@ -1126,7 +1126,10 @@ async def get_total_income():
         traceback.print_exc()
         return {
             "success": False,
-            "message": f"Error: {str(e)}"
+            "message": f"Error: {str(e)}",
+            "chart_data": [],
+            "table_data": [],
+            "grand_total": 0
         }
 
 # ============================================================================
