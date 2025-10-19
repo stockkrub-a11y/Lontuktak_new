@@ -947,11 +947,12 @@ async def get_analysis_best_sellers(
                 SELECT 
                     item as product_sku,
                     product_name,
+                    size,
                     SUM(quantity) as total_quantity_sold
                 FROM base_data
                 WHERE EXTRACT(YEAR FROM sales_date) = :year
                 AND EXTRACT(MONTH FROM sales_date) = :month
-                GROUP BY item, product_name
+                GROUP BY item, product_name, size
                 ORDER BY total_quantity_sold DESC
                 LIMIT :limit
             """)
@@ -959,8 +960,18 @@ async def get_analysis_best_sellers(
             df = pd.read_sql(query, engine, params={"year": year, "month": month, "limit": limit})
             
             if not df.empty:
-                print(f"[Backend] ✅ Retrieved {len(df)} best sellers")
-                return {"success": True, "message": "Best sellers retrieved successfully", "data": df.to_dict('records')}
+                result = []
+                for idx, row in df.iterrows():
+                    result.append({
+                        "rank": idx + 1,
+                        "name": row['product_name'],
+                        "base_sku": row['product_sku'],
+                        "size": row['size'] if pd.notna(row['size']) else 'N/A',
+                        "quantity": int(row['total_quantity_sold'])
+                    })
+                
+                print(f"[Backend] ✅ Retrieved {len(result)} best sellers")
+                return {"success": True, "message": "Best sellers retrieved successfully", "data": result}
             else:
                 print(f"[Backend] No best sellers found for {year}-{month:02d}")
                 return {"success": True, "message": "No best sellers found for the specified period", "data": []}
@@ -977,7 +988,6 @@ async def get_analysis_best_sellers(
         traceback.print_exc()
         return {"success": False, "message": f"Error: {str(e)}", "data": []}
 
-# ADDED ENDPOINT START
 @app.get("/analysis/performance-products")
 async def get_performance_products(search: str = Query("", description="Search term for products")):
     """Get products grouped by category from base_data table"""
@@ -1038,7 +1048,6 @@ async def get_performance_products(search: str = Query("", description="Search t
         import traceback
         traceback.print_exc()
         return {"success": False, "categories": {}, "all_products": []}
-# ADDED ENDPOINT END
 
 # ============================================================================
 # TRAIN AND PREDICT ENDPOINTS
