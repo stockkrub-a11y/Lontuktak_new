@@ -442,12 +442,12 @@ export default function AnalysisPage() {
           {activeTab === "historical" && (
             <div className="bg-white rounded-lg p-6 border border-[#cecabf]/30">
               <div className="flex items-center justify-between mb-6">
-                <h3 className="text-xl font-bold text-black">Historical Sales</h3>
+                <h3 className="text-xl font-bold text-black">Historical Stock Data</h3>
                 <div className="flex gap-2 relative" ref={skuInputRef}>
                   <div className="relative">
                     <input
                       type="text"
-                      placeholder="Search base SKU (e.g., SC-THU-0014)..."
+                      placeholder="Search by SKU or category..."
                       value={historicalSku}
                       onChange={(e) => handleSkuInputChange(e.target.value)}
                       onKeyDown={(e) => e.key === "Enter" && loadHistoricalSales()}
@@ -480,8 +480,8 @@ export default function AnalysisPage() {
 
               {!historicalSku.trim() && !historicalData && (
                 <div className="text-center py-12 text-[#938d7a]">
-                  <p>Enter a base SKU above to view historical sales data across all sizes</p>
-                  <p className="text-xs mt-2">Example: SC-THU-0014 (without size suffix like -DRS-L)</p>
+                  <p>Enter a SKU or category above to view historical stock data</p>
+                  <p className="text-xs mt-2">You can search by product SKU or category name</p>
                 </div>
               )}
 
@@ -491,18 +491,10 @@ export default function AnalysisPage() {
                     <ResponsiveContainer width="100%" height={400}>
                       <BarChart data={historicalData.chart_data}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#efece3" />
-                        <XAxis dataKey="month" stroke="#938d7a" />
+                        <XAxis dataKey="category" stroke="#938d7a" />
                         <YAxis stroke="#938d7a" />
                         <Legend />
-                        {historicalData.sizes.map((size: string, idx: number) => (
-                          <Bar
-                            key={size}
-                            dataKey={size}
-                            stackId="a"
-                            fill={["#d4cfc4", "#b8b3a8", "#efece3", "#e8e4d9", "#cecabf"][idx % 5]}
-                            name={`Size ${size}`}
-                          />
-                        ))}
+                        <Bar dataKey="total_stock" fill="#938d7a" name="Total Stock" />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
@@ -511,23 +503,33 @@ export default function AnalysisPage() {
                     <table className="w-full">
                       <thead>
                         <tr className="border-b border-[#efece3]">
-                          <th className="text-left py-3 px-4 text-sm font-medium text-black">Date</th>
-                          {historicalData.sizes.map((size: string) => (
-                            <th key={size} className="text-center py-3 px-4 text-sm font-medium text-black">
-                              {size}
-                            </th>
-                          ))}
+                          <th className="text-left py-3 px-4 text-sm font-medium text-black">SKU</th>
+                          <th className="text-left py-3 px-4 text-sm font-medium text-black">Product Name</th>
+                          <th className="text-center py-3 px-4 text-sm font-medium text-black">Stock Level</th>
+                          <th className="text-center py-3 px-4 text-sm font-medium text-black">Category</th>
+                          <th className="text-center py-3 px-4 text-sm font-medium text-black">Status</th>
                         </tr>
                       </thead>
                       <tbody>
                         {historicalData.table_data.map((row: any, idx: number) => (
                           <tr key={idx} className="border-b border-[#efece3]">
-                            <td className="py-3 px-4 text-sm text-black">{row.date}</td>
-                            {historicalData.sizes.map((size: string) => (
-                              <td key={size} className="py-3 px-4 text-sm text-black text-center">
-                                {row[size] || 0}
-                              </td>
-                            ))}
+                            <td className="py-3 px-4 text-sm text-black font-medium">{row.product_sku}</td>
+                            <td className="py-3 px-4 text-sm text-black">{row.product_name}</td>
+                            <td className="py-3 px-4 text-sm text-black text-center">{row.stock_level}</td>
+                            <td className="py-3 px-4 text-sm text-black text-center">{row.category}</td>
+                            <td className="py-3 px-4 text-sm text-center">
+                              <span
+                                className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                  row.flag === "active"
+                                    ? "bg-green-100 text-green-800"
+                                    : row.flag === "inactive"
+                                      ? "bg-red-100 text-red-800"
+                                      : "bg-gray-100 text-gray-800"
+                                }`}
+                              >
+                                {row.flag}
+                              </span>
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -536,7 +538,7 @@ export default function AnalysisPage() {
                 </>
               ) : historicalData && historicalData.chart_data.length === 0 ? (
                 <div className="text-center py-12 text-[#938d7a]">
-                  <p>{historicalData.message || "No data found for this SKU"}</p>
+                  <p>{historicalData.message || "No data found for this search"}</p>
                 </div>
               ) : null}
             </div>

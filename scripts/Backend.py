@@ -711,54 +711,55 @@ async def get_dashboard_analytics():
         }
 
 @app.get("/analysis/base_skus")
-async def get_analysis_base_skus(search: str = Query("", description="Search term for base SKUs")):
-    """Get unique base SKUs from base_data for analysis"""
+async def get_analysis_base_skus(search: str = Query("", description="Search term for base SKUs or categories")):
+    """Get unique base SKUs from base_stock for analysis, searchable by SKU or category"""
     try:
         print(f"[Backend] Fetching base SKUs with search: '{search}'")
         
         if not engine:
-            return {"success": False, "base_skus": [], "total": 0}
+            return {"success": False, "base_skus": [], "results": [], "total": 0}
         
         try:
-            # Get unique base SKUs from base_data
             query = """
-                SELECT DISTINCT product_sku
-                FROM base_data
+                SELECT DISTINCT product_sku, "หมวดหมู่" as category
+                FROM base_stock
                 WHERE product_sku IS NOT NULL
             """
             
             if search:
-                query += f" AND product_sku ILIKE '%{search}%'"
+                # Search in both SKU and category
+                query += f" AND (product_sku ILIKE '%{search}%' OR \"หมวดหมู่\" ILIKE '%{search}%')"
             
             query += " ORDER BY product_sku ASC LIMIT 100"
             
             df = pd.read_sql(query, engine)
             
             if not df.empty:
-                base_skus = df['product_sku'].tolist()
-                print(f"[Backend] ✅ Found {len(base_skus)} base SKUs")
-                return {"success": True, "base_skus": base_skus, "total": len(base_skus)}
+                # Return both SKU and category for display
+                results = df.to_dict('records')
+                print(f"[Backend] ✅ Found {len(results)} items matching search")
+                return {"success": True, "base_skus": [item['product_sku'] for item in results], "results": results, "total": len(results)}
             else:
-                print("[Backend] No base SKUs found")
-                return {"success": True, "base_skus": [], "total": 0}
+                print("[Backend] No items found")
+                return {"success": True, "base_skus": [], "results": [], "total": 0}
                 
         except Exception as db_error:
             print(f"[Backend] Database query failed: {str(db_error)}")
             import traceback
             traceback.print_exc()
-            return {"success": False, "base_skus": [], "total": 0}
+            return {"success": False, "base_skus": [], "results": [], "total": 0}
         
     except Exception as e:
         print(f"[Backend] ❌ Error fetching base SKUs: {str(e)}")
         import traceback
         traceback.print_exc()
-        return {"success": False, "base_skus": [], "total": 0}
+        return {"success": False, "base_skus": [], "results": [], "total": 0}
 
 @app.get("/analysis/historical")
-async def get_analysis_historical_sales(sku: str = Query(..., description="Product SKU to analyze")):
-    """Get historical sales data for a specific SKU"""
+async def get_analysis_historical_sales(sku: str = Query(..., description="Product SKU or category to analyze")):
+    """Get historical stock data from base_stock table"""
     try:
-        print(f"[Backend] Fetching historical sales for SKU: {sku}")
+        print(f"[Backend] Fetching historical stock data for: {sku}")
         
         if not engine:
             return {"success": False, "message": "Database not available", "chart_data": [], "table_data": [], "sizes": []}
@@ -766,52 +767,53 @@ async def get_analysis_historical_sales(sku: str = Query(..., description="Produ
         try:
             query = text("""
                 SELECT 
-                    sales_date,
                     product_sku,
-                    quantity,
-                    total_amount_baht,
-                    EXTRACT(YEAR FROM sales_date) as year,
-                    EXTRACT(MONTH FROM sales_date) as month
-                FROM base_data
-                WHERE product_sku ILIKE :sku_pattern
-                ORDER BY sales_date ASC
+                    product_name,
+                    stock_level,
+                    "หมวดหมู่" as category,
+                    flag,
+                    unchanged_counter,
+                    updated_at
+                FROM base_stock
+                WHERE product_sku ILIKE :sku_pattern OR "หมวดหมู่" ILIKE :sku_pattern
+                ORDER BY product_sku ASC
             """)
             
             # Execute with proper parameter binding
             df = pd.read_sql(query, engine, params={"sku_pattern": f"%{sku}%"})
             
             if df.empty:
-                print(f"[Backend] No historical data found for SKU: {sku}")
+                print(f"[Backend] No historical data found for: {sku}")
                 return {
                     "success": True,
-                    "message": "No data found for this SKU",
+                    "message": "No data found for this search term",
                     "chart_data": [],
                     "table_data": [],
                     "sizes": []
                 }
             
-            print(f"[Backend] ✅ Retrieved {len(df)} historical sales records")
+            print(f"[Backend] ✅ Retrieved {len(df)} stock records")
             
-            # Prepare chart data (monthly aggregation)
-            df['month_year'] = df['sales_date'].dt.to_period('M').astype(str)
-            chart_data = df.groupby('month_year').agg({
-                'quantity': 'sum',
-                'total_amount_baht': 'sum'
+            # Prepare chart data (group by category or SKU prefix)
+            chart_data = df.groupby('category').agg({
+                'stock_level': 'sum'
             }).reset_index()
+            chart_data.columns = ['category', 'total_stock']
             
             # Prepare table data
-            table_data = df[['sales_date', 'product_sku', 'quantity', 'total_amount_baht']].copy()
-            table_data['sales_date'] = table_data['sales_date'].astype(str)
+            table_data = df[['product_sku', 'product_name', 'stock_level', 'category', 'flag', 'unchanged_counter']].copy()
+            if 'updated_at' in df.columns:
+                table_data['updated_at'] = df['updated_at'].astype(str)
             
-            # Get unique sizes/variants
-            sizes = df['product_sku'].unique().tolist()
+            # Get unique categories
+            categories = df['category'].unique().tolist()
             
             return {
                 "success": True,
-                "message": "Historical sales data retrieved successfully",
+                "message": "Historical stock data retrieved successfully",
                 "chart_data": chart_data.to_dict('records'),
                 "table_data": table_data.to_dict('records'),
-                "sizes": sizes
+                "sizes": categories
             }
             
         except Exception as db_error:
@@ -827,7 +829,7 @@ async def get_analysis_historical_sales(sku: str = Query(..., description="Produ
             }
         
     except Exception as e:
-        print(f"[Backend] ❌ Error fetching historical sales: {str(e)}")
+        print(f"[Backend] ❌ Error fetching historical stock: {str(e)}")
         import traceback
         traceback.print_exc()
         return {
@@ -873,8 +875,7 @@ async def train_model(
             sales_temp_path = sales_temp.name
         
         try:
-            # Clean the data using file paths
-            print("[Backend] Cleaning data...")
+            print(f"[Backend] Calling auto_cleaning with sales_path={sales_temp_path}, product_path={product_temp_path}, engine={engine}")
             df_cleaned = auto_cleaning(sales_temp_path, product_temp_path, engine)
             
             rows_uploaded = len(df_cleaned)
