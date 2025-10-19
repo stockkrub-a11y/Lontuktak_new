@@ -216,19 +216,24 @@ export default function AnalysisPage() {
 
   const loadAvailableProducts = async () => {
     try {
+      console.log("[v0] Loading available products from database...")
       const data = await getAnalysisPerformanceProducts("")
+      console.log("[v0] Received data from backend:", data)
 
       if (data.success) {
+        console.log("[v0] Categories:", Object.keys(data.categories))
+        console.log("[v0] Total products:", data.all_products.length)
         setProductCategories(data.categories)
         setAllProducts(data.all_products)
         setBackendConnected(true)
         setShowOfflineBanner(false)
       } else {
+        console.log("[v0] Backend returned success=false")
         setProductCategories({})
         setAllProducts([])
       }
     } catch (error) {
-      console.error("Error loading available products:", error)
+      console.error("[v0] Error loading available products:", error)
       setBackendConnected(false)
       setShowOfflineBanner(true)
       setProductCategories({})
