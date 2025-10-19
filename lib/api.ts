@@ -294,24 +294,29 @@ export async function getAnalysisBestSellers(year: number, month: number, topN =
   }
 }
 
-export async function getAnalysisTotalIncome() {
+export async function getAnalysisTotalIncome(product_sku = "", category = "") {
   try {
+    const params = new URLSearchParams()
+    if (product_sku) params.append("product_sku", product_sku)
+    if (category) params.append("category", category)
+
+    const url = `/analysis/total_income${params.toString() ? `?${params}` : ""}`
+
     return await apiFetch<{
       success: boolean
-      message: string
+      message?: string
       table_data: Array<{
-        Product_SKU: string
         Product_name: string
-        Months_Active: number
-        Total_Revenue_Baht: number
+        Product_sku: string
         Avg_Monthly_Revenue_Baht: number
+        Total_Quantity: number
       }>
       chart_data: Array<{
-        month: number
-        income: number
+        month: string
+        total_income: number
       }>
       grand_total: number
-    }>("/analysis/total_income")
+    }>(url)
   } catch (error) {
     console.error("[v0] Failed to fetch total income:", error)
     return { success: false, message: "Failed to fetch data", table_data: [], chart_data: [], grand_total: 0 }

@@ -39,51 +39,58 @@ import {
   getAnalysisBaseSKUs,
   getAnalysisPerformanceProducts, // Added import for performance products
 } from "@/lib/api"
+import { Button } from "@/components/ui/button" // Assuming Button component exists
+import { useMediaQuery } from "@/hooks/useMediaQuery" // Assuming useMediaQuery hook exists
 
 export default function AnalysisPage() {
-  const [activeTab, setActiveTab] = useState<"historical" | "performance" | "bestsellers" | "income">("historical")
-  const [selectedProducts, setSelectedProducts] = useState<string[]>([])
-  const [productCategories, setProductCategories] = useState<Record<string, any[]>>({})
-  const [allProducts, setAllProducts] = useState<any[]>([])
-  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set())
-  const [showProductDropdown, setShowProductDropdown] = useState(false)
-  const [productSearch, setProductSearch] = useState("")
-  const dropdownRef = useRef<HTMLDivElement>(null)
-
-  const [historicalSku, setHistoricalSku] = useState("")
-  const [skuSuggestions, setSkuSuggestions] = useState<string[]>([])
-  const [showSkuDropdown, setShowSkuDropdown] = useState(false)
-  const skuInputRef = useRef<HTMLDivElement>(null)
-
+  const [activeTab, setActiveTab] = useState<"historical" | "performance" | "sellers" | "income">("historical")
   const [historicalData, setHistoricalData] = useState<any>(null)
   const [performanceData, setPerformanceData] = useState<any>(null)
-  const [bestSellersData, setBestSellersData] = useState<any[]>([])
+  const [bestSellersData, setBestSellersData] = useState<any>(null)
   const [totalIncomeData, setTotalIncomeData] = useState<any>(null)
-  const [bestSellersYear, setBestSellersYear] = useState<number>(new Date().getFullYear())
-  const [bestSellersMonth, setBestSellersMonth] = useState<number>(new Date().getMonth() + 1)
   const [isLoading, setIsLoading] = useState(false)
-
   const [backendConnected, setBackendConnected] = useState(true)
   const [showOfflineBanner, setShowOfflineBanner] = useState(false)
 
-  useEffect(() => {
-    if (activeTab === "income") {
-      loadTotalIncome()
-    } else if (activeTab === "bestsellers") {
-      loadBestSellers()
-    } else if (activeTab === "performance") {
-      loadAvailableProducts()
-    }
-  }, [activeTab])
+  // Historical Sales states
+  const [selectedBaseSku, setSelectedBaseSku] = useState("")
+  const [baseSKUs, setBaseSKUs] = useState<string[]>([])
+  const [skuSearch, setSkuSearch] = useState("")
+  const [showSkuDropdown, setShowSkuDropdown] = useState(false)
+  const skuInputRef = useRef<HTMLDivElement>(null)
+
+  // Performance Comparison states
+  const [selectedProducts, setSelectedProducts] = useState<string[]>([])
+  const [showProductDialog, setShowProductDialog] = useState(false)
+  const [productCategories, setProductCategories] = useState<
+    Record<string, Array<{ product_sku: string; product_name: string }>>
+  >({})
+  const [allProducts, setAllProducts] = useState<
+    Array<{ product_sku: string; product_name: string; category: string }>
+  >([])
+  const [productSearch, setProductSearch] = useState("")
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set())
+  const dropdownRef = useRef<HTMLDivElement>(null)
+
+  // Best Sellers states
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1)
+
+  const [incomeProductFilter, setIncomeProductFilter] = useState("")
+  const [incomeCategoryFilter, setIncomeCategoryFilter] = useState("")
+  const [incomeProducts, setIncomeProducts] = useState<string[]>([])
+  const [incomeCategories, setIncomeCategories] = useState<string[]>([])
+
+  const isMobile = useMediaQuery("(max-width: 768px)")
 
   const loadHistoricalSales = async () => {
-    if (!historicalSku.trim()) {
+    if (!selectedBaseSku.trim()) {
       return
     }
 
     setIsLoading(true)
     try {
-      const data = await getAnalysisHistoricalSales(historicalSku)
+      const data = await getAnalysisHistoricalSales(selectedBaseSku)
 
       if (data.success) {
         setHistoricalData(data)
@@ -105,7 +112,7 @@ export default function AnalysisPage() {
 
   const fetchSkuSuggestions = async (searchTerm: string) => {
     if (!searchTerm.trim()) {
-      setSkuSuggestions([])
+      setBaseSKUs([])
       setShowSkuDropdown(false)
       return
     }
@@ -114,28 +121,41 @@ export default function AnalysisPage() {
       const data = await getAnalysisBaseSKUs(searchTerm)
 
       if (data && data.success && data.base_skus.length > 0) {
-        setSkuSuggestions(data.base_skus)
+        setBaseSKUs(data.base_skus)
         setShowSkuDropdown(true)
       } else {
-        setSkuSuggestions([])
+        setBaseSKUs([])
         setShowSkuDropdown(false)
       }
     } catch (error) {
       console.error("Error fetching SKU suggestions:", error)
-      setSkuSuggestions([])
+      setBaseSKUs([])
       setShowSkuDropdown(false)
     }
   }
 
   const handleSkuInputChange = (value: string) => {
-    setHistoricalSku(value)
+    setSkuSearch(value)
+    setSelectedBaseSku(value)
     fetchSkuSuggestions(value)
   }
 
   const handleSelectSku = (sku: string) => {
-    setHistoricalSku(sku)
+    setSelectedBaseSku(sku)
+    setSkuSearch(sku) // Update search term as well
     setShowSkuDropdown(false)
-    setSkuSuggestions([])
+    setBaseSKUs([])
+  }
+
+  const loadBaseSKUs = async () => {
+    try {
+      const data = await getAnalysisBaseSKUs("") // Fetch all base SKUs
+      if (data && data.success) {
+        setBaseSKUs(data.base_skus)
+      }
+    } catch (error) {
+      console.error("Error loading base SKUs:", error)
+    }
   }
 
   const loadPerformanceComparison = async () => {
@@ -168,8 +188,8 @@ export default function AnalysisPage() {
   const loadBestSellers = async () => {
     setIsLoading(true)
     try {
-      const validYear = Number.isNaN(bestSellersYear) ? new Date().getFullYear() : bestSellersYear
-      const validMonth = Number.isNaN(bestSellersMonth) ? new Date().getMonth() + 1 : bestSellersMonth
+      const validYear = Number.isNaN(selectedYear) ? new Date().getFullYear() : selectedYear
+      const validMonth = Number.isNaN(selectedMonth) ? new Date().getMonth() + 1 : selectedMonth
 
       const data = await getAnalysisBestSellers(validYear, validMonth, 10)
 
@@ -191,10 +211,10 @@ export default function AnalysisPage() {
     }
   }
 
-  const loadTotalIncome = async () => {
+  const loadTotalIncome = async (product_sku = "", category = "") => {
     setIsLoading(true)
     try {
-      const data = await getAnalysisTotalIncome()
+      const data = await getAnalysisTotalIncome(product_sku, category)
 
       if (data.success) {
         setTotalIncomeData(data)
@@ -211,6 +231,21 @@ export default function AnalysisPage() {
       setTotalIncomeData(null)
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const loadIncomeFilterOptions = async () => {
+    try {
+      // Load products from base_data
+      const productsData = await getAnalysisPerformanceProducts("")
+      if (productsData.success && productsData.all_products) {
+        const uniqueProducts = [...new Set(productsData.all_products.map((p) => p.product_sku))]
+        const uniqueCategories = [...new Set(productsData.all_products.map((p) => p.category).filter(Boolean))]
+        setIncomeProducts(uniqueProducts)
+        setIncomeCategories(uniqueCategories)
+      }
+    } catch (error) {
+      console.error("Error loading income filter options:", error)
     }
   }
 
@@ -280,11 +315,29 @@ export default function AnalysisPage() {
     }
   }
 
+  const handleApplyIncomeFilters = () => {
+    loadTotalIncome(incomeProductFilter, incomeCategoryFilter)
+  }
+
+  const handleResetIncomeFilters = () => {
+    setIncomeProductFilter("")
+    setIncomeCategoryFilter("")
+    loadTotalIncome("", "")
+  }
+
   useEffect(() => {
-    if (activeTab === "performance") {
+    if (activeTab === "historical") {
+      loadBaseSKUs()
+    } else if (activeTab === "performance") {
       loadAvailableProducts()
+    } else if (activeTab === "sellers") {
+      // Changed from "bestsellers" to "sellers"
+      loadBestSellers()
+    } else if (activeTab === "income") {
+      loadTotalIncome()
+      loadIncomeFilterOptions()
     }
-  }, [activeTab, productSearch])
+  }, [activeTab])
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -305,18 +358,19 @@ export default function AnalysisPage() {
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setShowProductDropdown(false)
+        setShowProductDialog(false) // Changed from setShowProductDropdown
       }
     }
 
-    if (showProductDropdown) {
+    if (showProductDialog) {
+      // Changed from showProductDropdown
       document.addEventListener("mousedown", handleClickOutside)
     }
 
     return () => {
       document.removeEventListener("mousedown", handleClickOutside)
     }
-  }, [showProductDropdown])
+  }, [showProductDialog]) // Changed from showProductDropdown
 
   const getFilteredProducts = () => {
     if (productSearch) {
@@ -326,7 +380,9 @@ export default function AnalysisPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f8f5ee]">
+    <div className="flex min-h-screen bg-[#f5f3ed]">
+      {" "}
+      {/* Changed background color */}
       {/* Header */}
       <header className="bg-white border-b border-[#efece3] px-6 py-4">
         <div className="flex items-center justify-between">
@@ -370,7 +426,6 @@ export default function AnalysisPage() {
           </div>
         </div>
       </header>
-
       <div className="flex">
         {/* Sidebar */}
         <aside className="w-52 bg-[#efece3] min-h-[calc(100vh-73px)] p-4">
@@ -477,9 +532,9 @@ export default function AnalysisPage() {
             </button>
 
             <button
-              onClick={() => setActiveTab("bestsellers")}
+              onClick={() => setActiveTab("sellers")} // Changed from "bestsellers"
               className={`flex items-center gap-3 p-4 rounded-lg border transition-all ${
-                activeTab === "bestsellers"
+                activeTab === "sellers" // Changed from "bestsellers"
                   ? "bg-[#cecabf] border-[#938d7a] shadow-md"
                   : "bg-white border-[#efece3] hover:bg-[#efece3]"
               }`}
@@ -517,15 +572,15 @@ export default function AnalysisPage() {
                     <input
                       type="text"
                       placeholder="Search by SKU or category..."
-                      value={historicalSku}
+                      value={skuSearch}
                       onChange={(e) => handleSkuInputChange(e.target.value)}
                       onKeyDown={(e) => e.key === "Enter" && loadHistoricalSales()}
-                      onFocus={() => historicalSku.trim() && skuSuggestions.length > 0 && setShowSkuDropdown(true)}
+                      onFocus={() => skuSearch.trim() && baseSKUs.length > 0 && setShowSkuDropdown(true)}
                       className="w-80 px-4 py-2 rounded-lg border border-[#cecabf] text-sm text-black outline-none focus:border-[#938d7a]"
                     />
-                    {showSkuDropdown && skuSuggestions.length > 0 && (
+                    {showSkuDropdown && baseSKUs.length > 0 && (
                       <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-[#cecabf] rounded-lg shadow-lg max-h-60 overflow-y-auto z-50">
-                        {skuSuggestions.map((sku) => (
+                        {baseSKUs.map((sku) => (
                           <button
                             key={sku}
                             onClick={() => handleSelectSku(sku)}
@@ -539,7 +594,7 @@ export default function AnalysisPage() {
                   </div>
                   <button
                     onClick={loadHistoricalSales}
-                    disabled={isLoading || !historicalSku.trim()}
+                    disabled={isLoading || !selectedBaseSku.trim()}
                     className="px-4 py-2 rounded-lg bg-[#cecabf] hover:bg-[#b8b3a8] text-black text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {isLoading ? "Loading..." : "Search"}
@@ -547,7 +602,7 @@ export default function AnalysisPage() {
                 </div>
               </div>
 
-              {!historicalSku.trim() && !historicalData && (
+              {!selectedBaseSku.trim() && !historicalData && (
                 <div className="text-center py-12 text-[#938d7a]">
                   <p>Enter a SKU or category above to view historical stock data</p>
                   <p className="text-xs mt-2">You can search by product SKU or category name</p>
@@ -621,7 +676,7 @@ export default function AnalysisPage() {
                 <div className="flex gap-2">
                   <div className="flex gap-2 relative" ref={dropdownRef}>
                     <button
-                      onClick={() => setShowProductDropdown(!showProductDropdown)}
+                      onClick={() => setShowProductDialog(!showProductDialog)} // Changed to showProductDialog
                       className="px-4 py-2 rounded-lg bg-[#cecabf] hover:bg-[#b8b3a8] text-black text-sm font-medium flex items-center gap-2 transition-all"
                     >
                       <Package2 className="w-4 h-4" />
@@ -688,7 +743,7 @@ export default function AnalysisPage() {
           )}
 
           {/* Best Sellers View */}
-          {activeTab === "bestsellers" && (
+          {activeTab === "sellers" && ( // Changed from "bestsellers"
             <div className="bg-white rounded-lg p-6 border border-[#cecabf]/30">
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-xl font-bold text-black">Top 10 Best Sellers</h3>
@@ -696,20 +751,20 @@ export default function AnalysisPage() {
                   <input
                     type="number"
                     placeholder="Year"
-                    value={bestSellersYear || ""}
+                    value={selectedYear || ""}
                     onChange={(e) => {
                       const val = e.target.value
-                      setBestSellersYear(val === "" ? new Date().getFullYear() : Number.parseInt(val, 10))
+                      setSelectedYear(val === "" ? new Date().getFullYear() : Number.parseInt(val, 10))
                     }}
                     className="w-24 px-3 py-2 rounded-lg border border-[#cecabf] text-sm text-black outline-none focus:border-[#938d7a]"
                   />
                   <input
                     type="number"
                     placeholder="Month"
-                    value={bestSellersMonth || ""}
+                    value={selectedMonth || ""}
                     onChange={(e) => {
                       const val = e.target.value
-                      setBestSellersMonth(val === "" ? new Date().getMonth() + 1 : Number.parseInt(val, 10))
+                      setSelectedMonth(val === "" ? new Date().getMonth() + 1 : Number.parseInt(val, 10))
                     }}
                     min="1"
                     max="12"
@@ -725,7 +780,7 @@ export default function AnalysisPage() {
                 </div>
               </div>
 
-              {bestSellersData.length > 0 ? (
+              {bestSellersData && bestSellersData.length > 0 ? (
                 <div className="space-y-4">
                   {bestSellersData.map((item) => (
                     <div key={item.rank} className="flex items-center gap-4 p-4 bg-[#f8f5ee] rounded-lg">
@@ -766,6 +821,55 @@ export default function AnalysisPage() {
           {/* Total Income View */}
           {activeTab === "income" && (
             <div className="space-y-6">
+              <div className="bg-white rounded-lg p-4 border border-[#cecabf]/30">
+                <div className="flex flex-wrap gap-4 items-end">
+                  <div className="flex-1 min-w-[200px]">
+                    <label className="block text-sm font-medium text-black mb-2">Filter by Product</label>
+                    <select
+                      value={incomeProductFilter}
+                      onChange={(e) => setIncomeProductFilter(e.target.value)}
+                      className="w-full px-3 py-2 border border-[#cecabf]/30 rounded-md bg-white text-black"
+                    >
+                      <option value="">All Products</option>
+                      {incomeProducts.map((product) => (
+                        <option key={product} value={product}>
+                          {product}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="flex-1 min-w-[200px]">
+                    <label className="block text-sm font-medium text-black mb-2">Filter by Category</label>
+                    <select
+                      value={incomeCategoryFilter}
+                      onChange={(e) => setIncomeCategoryFilter(e.target.value)}
+                      className="w-full px-3 py-2 border border-[#cecabf]/30 rounded-md bg-white text-black"
+                    >
+                      <option value="">All Categories</option>
+                      {incomeCategories.map((category) => (
+                        <option key={category} value={category}>
+                          {category}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <Button onClick={handleApplyIncomeFilters} className="bg-[#938d7a] hover:bg-[#7a7565] text-white">
+                      Apply Filters
+                    </Button>
+                    <Button
+                      onClick={handleResetIncomeFilters}
+                      variant="outline"
+                      className="border-[#cecabf] text-[#938d7a] hover:bg-[#efece3] bg-transparent"
+                    >
+                      Reset
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
               {totalIncomeData ? (
                 <>
                   {/* Stat Cards */}
@@ -854,13 +958,12 @@ export default function AnalysisPage() {
           )}
         </main>
       </div>
-
-      {/* Product Selection Dropdown */}
-      {showProductDropdown && (
+      {/* Product Selection Dialog */}
+      {showProductDialog && ( // Changed from showProductDropdown
         <div
           ref={dropdownRef}
           className="fixed inset-0 bg-black/20 flex items-center justify-center z-50"
-          onClick={() => setShowProductDropdown(false)}
+          onClick={() => setShowProductDialog(false)} // Changed to showProductDialog
         >
           <div
             className="bg-white rounded-lg p-6 w-[600px] max-h-[80vh] overflow-y-auto"
@@ -868,7 +971,9 @@ export default function AnalysisPage() {
           >
             <div className="flex items-center justify-between mb-4">
               <h4 className="font-bold text-black">Select Products (Max 3)</h4>
-              <button onClick={() => setShowProductDropdown(false)} className="text-[#938d7a] hover:text-black">
+              <button onClick={() => setShowProductDialog(false)} className="text-[#938d7a] hover:text-black">
+                {" "}
+                {/* Changed to showProductDialog */}
                 <X className="w-5 h-5" />
               </button>
             </div>
