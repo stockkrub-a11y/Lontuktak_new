@@ -945,14 +945,13 @@ async def get_analysis_best_sellers(
         try:
             query = text("""
                 SELECT 
-                    item as product_sku,
+                    product_sku,
                     product_name,
-                    size,
-                    SUM(quantity) as total_quantity_sold
+                    SUM(total_quantity) as total_quantity_sold
                 FROM base_data
-                WHERE EXTRACT(YEAR FROM sales_date) = :year
-                AND EXTRACT(MONTH FROM sales_date) = :month
-                GROUP BY item, product_name, size
+                WHERE sales_year = :year
+                AND sales_month = :month
+                GROUP BY product_sku, product_name
                 ORDER BY total_quantity_sold DESC
                 LIMIT :limit
             """)
@@ -966,7 +965,7 @@ async def get_analysis_best_sellers(
                         "rank": idx + 1,
                         "name": row['product_name'],
                         "base_sku": row['product_sku'],
-                        "size": row['size'] if pd.notna(row['size']) else 'N/A',
+                        "size": 'N/A',  # base_data doesn't have size column
                         "quantity": int(row['total_quantity_sold'])
                     })
                 
@@ -978,15 +977,11 @@ async def get_analysis_best_sellers(
                 
         except Exception as db_error:
             print(f"[Backend] Database query failed: {str(db_error)}")
-            import traceback
-            traceback.print_exc()
             return {"success": False, "message": f"Database error: {str(db_error)}", "data": []}
-        
+            
     except Exception as e:
-        print(f"[Backend] ❌ Error fetching best sellers: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return {"success": False, "message": f"Error: {str(e)}", "data": []}
+        print(f"[Backend] Error in best_sellers endpoint: {str(e)}")
+        return {"success": False, "message": f"Server error: {str(e)}", "data": []}
 
 @app.get("/analysis/performance-products")
 async def get_performance_products(search: str = Query("", description="Search term for products")):
