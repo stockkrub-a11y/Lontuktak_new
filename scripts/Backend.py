@@ -855,7 +855,7 @@ async def get_analysis_performance(request: dict):
             return {"success": False, "message": "No SKUs provided", "chart_data": {}, "table_data": []}
         
         try:
-            # Build query to get sales data for selected SKUs
+            # Build query to get sales data for selected SKUs from base_data
             placeholders = ', '.join([f':sku{i}' for i in range(len(sku_list))])
             query = text(f"""
                 SELECT 
@@ -994,7 +994,8 @@ async def get_performance_products(search: str = Query("", description="Search t
                     product_name,
                     category
                 FROM base_data
-                WHERE item IS NOT NULL
+                WHERE item IS NOT NULL AND product_name IS NOT NULL
+                ORDER BY category, product_name
             """)
             
             df = pd.read_sql(query, engine)
@@ -1002,23 +1003,19 @@ async def get_performance_products(search: str = Query("", description="Search t
             if df.empty:
                 return {"success": True, "categories": {}, "all_products": []}
             
-            # Apply search filter if provided
+            # Apply search filter if provided (only on SKU for search box)
             if search:
-                mask = (
-                    df['product_sku'].str.contains(search, case=False, na=False) |
-                    df['product_name'].str.contains(search, case=False, na=False) |
-                    df['category'].str.contains(search, case=False, na=False)
-                )
+                mask = df['product_sku'].str.contains(search, case=False, na=False)
                 df = df[mask]
             
             # Group products by category
             categories = {}
-            for category in df['category'].unique():
+            for category in sorted(df['category'].unique()):
                 if pd.notna(category):
                     category_products = df[df['category'] == category][['product_sku', 'product_name']].to_dict('records')
                     categories[category] = category_products
             
-            # Also return flat list of all products for search
+            # Also return flat list of all products
             all_products = df[['product_sku', 'product_name', 'category']].to_dict('records')
             
             print(f"[Backend] ✅ Found {len(categories)} categories with {len(all_products)} total products")

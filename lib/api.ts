@@ -267,7 +267,7 @@ export async function getAnalysisPerformance(skuList: string[]) {
       chart_data: Record<string, Array<{ month: number; value: number }>>
     }>("/analysis/performance", {
       method: "POST",
-      body: JSON.stringify(skuList),
+      body: JSON.stringify({ sku_list: skuList }),
     })
   } catch (error) {
     console.error("[v0] Failed to fetch performance comparison:", error)

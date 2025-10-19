@@ -215,9 +215,8 @@ export default function AnalysisPage() {
 
   const loadAvailableProducts = async () => {
     try {
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/analysis/performance-products?search=${productSearch}`,
-      )
+      const searchParam = productSearch.trim() ? `?search=${encodeURIComponent(productSearch)}` : ""
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/analysis/performance-products${searchParam}`)
       const data = await response.json()
 
       if (data && data.success) {
@@ -302,13 +301,7 @@ export default function AnalysisPage() {
 
   const getFilteredProducts = () => {
     if (productSearch) {
-      // When searching, show all matching products
-      return allProducts.filter(
-        (product) =>
-          product.product_sku.toLowerCase().includes(productSearch.toLowerCase()) ||
-          product.product_name.toLowerCase().includes(productSearch.toLowerCase()) ||
-          product.category.toLowerCase().includes(productSearch.toLowerCase()),
-      )
+      return allProducts.filter((product) => product.product_sku.toLowerCase().includes(productSearch.toLowerCase()))
     }
     return []
   }
@@ -863,14 +856,14 @@ export default function AnalysisPage() {
 
             <input
               type="text"
-              placeholder="Search products, SKU, or category..."
+              placeholder="Search by SKU..."
               value={productSearch}
               onChange={(e) => setProductSearch(e.target.value)}
               className="w-full px-3 py-2 mb-4 rounded-lg border border-[#cecabf] text-sm text-black outline-none focus:border-[#938d7a]"
             />
 
             {productSearch ? (
-              // Show search results as flat list
+              // Show search results as flat list when searching
               <div className="space-y-2">
                 <p className="text-xs text-[#938d7a] mb-2">Search results:</p>
                 {getFilteredProducts().length > 0 ? (
@@ -901,9 +894,8 @@ export default function AnalysisPage() {
                 )}
               </div>
             ) : (
-              // Show hierarchical category structure
               <div className="space-y-2">
-                <p className="text-xs text-[#938d7a] mb-2">Select by category:</p>
+                <p className="text-xs text-[#938d7a] mb-2">Browse by category:</p>
                 {Object.keys(productCategories).length > 0 ? (
                   Object.keys(productCategories).map((category) => (
                     <div key={category} className="border border-[#efece3] rounded-lg overflow-hidden">
