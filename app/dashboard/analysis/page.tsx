@@ -39,11 +39,10 @@ import {
   getAnalysisBaseSKUs,
 } from "@/lib/api"
 
-const allProducts = ["Shinchan Boxers", "Deep Sleep", "Long Pants", "Basic T-Shirt", "Premium Shirt"]
-
 export default function AnalysisPage() {
   const [activeTab, setActiveTab] = useState<"historical" | "performance" | "bestsellers" | "income">("historical")
-  const [selectedProducts, setSelectedProducts] = useState<string[]>(["Shinchan Boxers", "Deep Sleep", "Long Pants"])
+  const [selectedProducts, setSelectedProducts] = useState<string[]>([])
+  const [availableProducts, setAvailableProducts] = useState<string[]>([])
   const [showProductDropdown, setShowProductDropdown] = useState(false)
   const [productSearch, setProductSearch] = useState("")
   const dropdownRef = useRef<HTMLDivElement>(null)
@@ -69,6 +68,8 @@ export default function AnalysisPage() {
       loadTotalIncome()
     } else if (activeTab === "bestsellers") {
       loadBestSellers()
+    } else if (activeTab === "performance") {
+      loadAvailableProducts()
     }
   }, [activeTab])
 
@@ -135,6 +136,10 @@ export default function AnalysisPage() {
   }
 
   const loadPerformanceComparison = async () => {
+    if (selectedProducts.length === 0) {
+      return
+    }
+
     setIsLoading(true)
     try {
       const data = await getAnalysisPerformance(selectedProducts)
@@ -206,6 +211,20 @@ export default function AnalysisPage() {
     }
   }
 
+  const loadAvailableProducts = async () => {
+    try {
+      const data = await getAnalysisBaseSKUs("")
+      if (data && data.success && data.base_skus.length > 0) {
+        setAvailableProducts(data.base_skus)
+        if (selectedProducts.length === 0) {
+          setSelectedProducts(data.base_skus.slice(0, 3))
+        }
+      }
+    } catch (error) {
+      console.error("Error loading available products:", error)
+    }
+  }
+
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (skuInputRef.current && !skuInputRef.current.contains(event.target as Node)) {
@@ -254,7 +273,9 @@ export default function AnalysisPage() {
     })
   }
 
-  const filteredProducts = allProducts.filter((product) => product.toLowerCase().includes(productSearch.toLowerCase()))
+  const filteredProducts = availableProducts.filter((product) =>
+    product.toLowerCase().includes(productSearch.toLowerCase()),
+  )
 
   return (
     <div className="min-h-screen bg-[#f8f5ee]">
@@ -550,26 +571,18 @@ export default function AnalysisPage() {
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-xl font-bold text-black">Performance Comparison (Top 3 SKUs)</h3>
                 <div className="flex gap-2">
-                  {/* ... existing product selection buttons ... */}
                   <div className="flex gap-2 relative" ref={dropdownRef}>
-                    {selectedProducts.slice(0, 3).map((product, index) => (
-                      <button
-                        key={product}
-                        onClick={() => setShowProductDropdown(!showProductDropdown)}
-                        className={`px-4 py-2 rounded-lg text-sm font-medium text-black flex items-center gap-2 transition-all ${
-                          index === 0
-                            ? "bg-[#cecabf] hover:bg-[#b8b3a8]"
-                            : "bg-white border border-[#cecabf] hover:bg-[#efece3]"
-                        }`}
-                      >
-                        <Package2 className="w-4 h-4" />
-                        Product {index + 1}
-                      </button>
-                    ))}
+                    <button
+                      onClick={() => setShowProductDropdown(!showProductDropdown)}
+                      className="px-4 py-2 rounded-lg bg-[#cecabf] hover:bg-[#b8b3a8] text-black text-sm font-medium flex items-center gap-2 transition-all"
+                    >
+                      <Package2 className="w-4 h-4" />
+                      {selectedProducts.length > 0 ? `${selectedProducts.length} Selected` : "Select Products"}
+                    </button>
                   </div>
                   <button
                     onClick={loadPerformanceComparison}
-                    disabled={isLoading}
+                    disabled={isLoading || selectedProducts.length === 0}
                     className="px-4 py-2 rounded-lg bg-[#cecabf] hover:bg-[#b8b3a8] text-black text-sm font-medium transition-colors disabled:opacity-50"
                   >
                     {isLoading ? "Loading..." : "Compare"}
@@ -599,7 +612,7 @@ export default function AnalysisPage() {
                         <tr className="border-b border-[#efece3]">
                           <th className="text-left py-3 px-4 text-sm font-medium text-black">SKU</th>
                           <th className="text-left py-3 px-4 text-sm font-medium text-black">Product</th>
-                          <th className="text-right py-3 px-4 text-sm font-medium text-black">Quantity</th>
+                          <th className="text-right py-3 px-4 text-sm font-medium text-black">Total Quantity</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -616,7 +629,11 @@ export default function AnalysisPage() {
                 </>
               ) : (
                 <div className="text-center py-12 text-[#938d7a]">
-                  <p>Select products and click Compare to view performance data</p>
+                  <p>
+                    {selectedProducts.length === 0
+                      ? "Select products to compare"
+                      : "Select products and click Compare to view performance data"}
+                  </p>
                 </div>
               )}
             </div>
@@ -817,25 +834,29 @@ export default function AnalysisPage() {
             />
 
             <div className="space-y-2">
-              {filteredProducts.map((product) => (
-                <button
-                  key={product}
-                  onClick={() => toggleProduct(product)}
-                  disabled={!selectedProducts.includes(product) && selectedProducts.length >= 3}
-                  className={`w-full text-left px-4 py-3 rounded-lg border transition-all ${
-                    selectedProducts.includes(product)
-                      ? "bg-[#cecabf] border-[#938d7a] text-black"
-                      : "bg-white border-[#efece3] text-black hover:bg-[#f8f5ee]"
-                  } disabled:opacity-50 disabled:cursor-not-allowed`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium">{product}</span>
-                    {selectedProducts.includes(product) && (
-                      <span className="text-xs bg-white px-2 py-1 rounded">Selected</span>
-                    )}
-                  </div>
-                </button>
-              ))}
+              {filteredProducts.length > 0 ? (
+                filteredProducts.map((product) => (
+                  <button
+                    key={product}
+                    onClick={() => toggleProduct(product)}
+                    disabled={!selectedProducts.includes(product) && selectedProducts.length >= 3}
+                    className={`w-full text-left px-4 py-3 rounded-lg border transition-all ${
+                      selectedProducts.includes(product)
+                        ? "bg-[#cecabf] border-[#938d7a] text-black"
+                        : "bg-white border-[#efece3] text-black hover:bg-[#f8f5ee]"
+                    } disabled:opacity-50 disabled:cursor-not-allowed`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium">{product}</span>
+                      {selectedProducts.includes(product) && (
+                        <span className="text-xs bg-white px-2 py-1 rounded">Selected</span>
+                      )}
+                    </div>
+                  </button>
+                ))
+              ) : (
+                <p className="text-center text-[#938d7a] py-4">No products available</p>
+              )}
             </div>
 
             <div className="mt-4 pt-4 border-t border-[#efece3]">

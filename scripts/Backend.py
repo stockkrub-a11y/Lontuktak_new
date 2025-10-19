@@ -10,6 +10,7 @@ import uvicorn
 from sqlalchemy import text
 import sys
 import time
+import joblib
 
 # Import local modules
 from Auto_cleaning import auto_cleaning
@@ -840,6 +841,142 @@ async def get_analysis_historical_sales(sku: str = Query(..., description="Produ
             "sizes": []
         }
 
+@app.post("/analysis/performance")
+async def get_analysis_performance(request: dict):
+    """Get performance comparison data from base_data table"""
+    try:
+        sku_list = request.get('sku_list', [])
+        print(f"[Backend] Fetching performance comparison for SKUs: {sku_list}")
+        
+        if not engine:
+            return {"success": False, "message": "Database not available", "chart_data": {}, "table_data": []}
+        
+        if not sku_list or len(sku_list) == 0:
+            return {"success": False, "message": "No SKUs provided", "chart_data": {}, "table_data": []}
+        
+        try:
+            # Build query to get sales data for selected SKUs
+            placeholders = ', '.join([f':sku{i}' for i in range(len(sku_list))])
+            query = text(f"""
+                SELECT 
+                    item as "Item",
+                    product_name as "Product_name",
+                    EXTRACT(MONTH FROM sales_date) as month,
+                    SUM(quantity) as "Quantity"
+                FROM base_data
+                WHERE item IN ({placeholders})
+                GROUP BY item, product_name, EXTRACT(MONTH FROM sales_date)
+                ORDER BY item, month
+            """)
+            
+            # Create params dict
+            params = {f'sku{i}': sku for i, sku in enumerate(sku_list)}
+            
+            df = pd.read_sql(query, engine, params=params)
+            
+            if df.empty:
+                print(f"[Backend] No performance data found for SKUs: {sku_list}")
+                return {
+                    "success": True,
+                    "message": "No data found for selected SKUs",
+                    "chart_data": {},
+                    "table_data": []
+                }
+            
+            print(f"[Backend] ✅ Retrieved {len(df)} performance records")
+            
+            # Prepare chart data (scatter plot format)
+            chart_data = {}
+            for sku in sku_list:
+                sku_data = df[df['Item'] == sku]
+                if not sku_data.empty:
+                    chart_data[sku] = [
+                        {"month": int(row['month']), "value": int(row['Quantity'])}
+                        for _, row in sku_data.iterrows()
+                    ]
+            
+            # Prepare table data (aggregated totals)
+            table_data = df.groupby(['Item', 'Product_name']).agg({
+                'Quantity': 'sum'
+            }).reset_index()
+            
+            return {
+                "success": True,
+                "message": "Performance data retrieved successfully",
+                "chart_data": chart_data,
+                "table_data": table_data.to_dict('records')
+            }
+            
+        except Exception as db_error:
+            print(f"[Backend] Database query failed: {str(db_error)}")
+            import traceback
+            traceback.print_exc()
+            return {
+                "success": False,
+                "message": f"Database error: {str(db_error)}",
+                "chart_data": {},
+                "table_data": []
+            }
+        
+    except Exception as e:
+        print(f"[Backend] ❌ Error fetching performance comparison: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return {
+            "success": False,
+            "message": f"Error: {str(e)}",
+            "chart_data": {},
+            "table_data": []
+        }
+
+@app.get("/analysis/best_sellers")
+async def get_analysis_best_sellers(
+    year: int = Query(..., description="Year"),
+    month: int = Query(..., description="Month"),
+    limit: int = Query(10, description="Number of top sellers")
+):
+    """Get best selling products from base_data table"""
+    try:
+        print(f"[Backend] Fetching best sellers for {year}-{month:02d} (limit {limit})...")
+        
+        if not engine:
+            return {"success": False, "message": "Database not available", "data": []}
+        
+        try:
+            query = text("""
+                SELECT 
+                    item as product_sku,
+                    product_name,
+                    SUM(quantity) as total_quantity_sold
+                FROM base_data
+                WHERE EXTRACT(YEAR FROM sales_date) = :year
+                AND EXTRACT(MONTH FROM sales_date) = :month
+                GROUP BY item, product_name
+                ORDER BY total_quantity_sold DESC
+                LIMIT :limit
+            """)
+            
+            df = pd.read_sql(query, engine, params={"year": year, "month": month, "limit": limit})
+            
+            if not df.empty:
+                print(f"[Backend] ✅ Retrieved {len(df)} best sellers")
+                return {"success": True, "message": "Best sellers retrieved successfully", "data": df.to_dict('records')}
+            else:
+                print(f"[Backend] No best sellers found for {year}-{month:02d}")
+                return {"success": True, "message": "No best sellers found for the specified period", "data": []}
+                
+        except Exception as db_error:
+            print(f"[Backend] Database query failed: {str(db_error)}")
+            import traceback
+            traceback.print_exc()
+            return {"success": False, "message": f"Database error: {str(db_error)}", "data": []}
+        
+    except Exception as e:
+        print(f"[Backend] ❌ Error fetching best sellers: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return {"success": False, "message": f"Error: {str(e)}", "data": []}
+
 # ============================================================================
 # TRAIN AND PREDICT ENDPOINTS
 # ============================================================================
@@ -1049,7 +1186,6 @@ async def predict_sales(n_forecast: int = Query(3, description="Number of months
             )
         
         print("[Backend] Loading trained model and data...")
-        import joblib
         
         if not os.path.exists("xgb_sales_model.pkl"):
             raise HTTPException(
