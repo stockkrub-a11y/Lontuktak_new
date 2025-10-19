@@ -215,8 +215,10 @@ export default function AnalysisPage() {
 
   const loadAvailableProducts = async () => {
     try {
+      console.log("[v0] Loading available products from database...")
       const searchParam = productSearch.trim() ? `?search=${encodeURIComponent(productSearch)}` : ""
       const url = `${process.env.NEXT_PUBLIC_API_URL}/analysis/performance-products${searchParam}`
+      console.log("[v0] Fetching from URL:", url)
 
       const response = await fetch(url)
 
@@ -225,19 +227,25 @@ export default function AnalysisPage() {
       }
 
       const data = await response.json()
+      console.log("[v0] Received data from backend:", data)
 
       if (data && data.success) {
+        console.log("[v0] Categories found:", Object.keys(data.categories))
+        console.log("[v0] Total products:", data.all_products.length)
         setProductCategories(data.categories)
         setAllProducts(data.all_products)
 
         // Auto-select first 3 products if none selected
         if (selectedProducts.length === 0 && data.all_products.length > 0) {
           const firstThree = data.all_products.slice(0, 3).map((p: any) => p.product_sku)
+          console.log("[v0] Auto-selecting first 3 products:", firstThree)
           setSelectedProducts(firstThree)
         }
+      } else {
+        console.log("[v0] Backend returned success=false or no data")
       }
     } catch (error) {
-      console.error("Error loading available products:", error)
+      console.error("[v0] Error loading available products:", error)
     }
   }
 

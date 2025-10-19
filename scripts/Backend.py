@@ -988,14 +988,16 @@ async def get_performance_products(search: str = Query("", description="Search t
             return {"success": False, "categories": {}, "all_products": []}
         
         try:
+            # JOIN base_data with all_products to get category information
             query = text("""
                 SELECT DISTINCT 
-                    item as product_sku,
-                    product_name,
-                    category
-                FROM base_data
-                WHERE item IS NOT NULL AND product_name IS NOT NULL
-                ORDER BY category, product_name
+                    bd.product_sku,
+                    bd.product_name,
+                    COALESCE(ap.category, 'Uncategorized') as category
+                FROM base_data bd
+                LEFT JOIN all_products ap ON bd.product_sku = ap.product_sku
+                WHERE bd.product_sku IS NOT NULL AND bd.product_name IS NOT NULL
+                ORDER BY category, bd.product_name
             """)
             
             df = pd.read_sql(query, engine)
@@ -1030,7 +1032,7 @@ async def get_performance_products(search: str = Query("", description="Search t
             import traceback
             traceback.print_exc()
             return {"success": False, "categories": {}, "all_products": []}
-        
+            
     except Exception as e:
         print(f"[Backend] ❌ Error fetching performance products: {str(e)}")
         import traceback
