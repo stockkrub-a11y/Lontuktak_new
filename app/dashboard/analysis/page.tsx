@@ -42,7 +42,9 @@ import {
 export default function AnalysisPage() {
   const [activeTab, setActiveTab] = useState<"historical" | "performance" | "bestsellers" | "income">("historical")
   const [selectedProducts, setSelectedProducts] = useState<string[]>([])
-  const [availableProducts, setAvailableProducts] = useState<string[]>([])
+  const [productCategories, setProductCategories] = useState<Record<string, any[]>>({})
+  const [allProducts, setAllProducts] = useState<any[]>([])
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   const [showProductDropdown, setShowProductDropdown] = useState(false)
   const [productSearch, setProductSearch] = useState("")
   const dropdownRef = useRef<HTMLDivElement>(null)
@@ -213,17 +215,30 @@ export default function AnalysisPage() {
 
   const loadAvailableProducts = async () => {
     try {
-      const data = await getAnalysisBaseSKUs("")
-      if (data && data.success && data.base_skus.length > 0) {
-        setAvailableProducts(data.base_skus)
-        if (selectedProducts.length === 0) {
-          setSelectedProducts(data.base_skus.slice(0, 3))
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/analysis/performance-products?search=${productSearch}`,
+      )
+      const data = await response.json()
+
+      if (data && data.success) {
+        setProductCategories(data.categories)
+        setAllProducts(data.all_products)
+
+        // Auto-select first 3 products if none selected
+        if (selectedProducts.length === 0 && data.all_products.length > 0) {
+          setSelectedProducts(data.all_products.slice(0, 3).map((p: any) => p.product_sku))
         }
       }
     } catch (error) {
       console.error("Error loading available products:", error)
     }
   }
+
+  useEffect(() => {
+    if (activeTab === "performance") {
+      loadAvailableProducts()
+    }
+  }, [activeTab, productSearch])
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -273,9 +288,23 @@ export default function AnalysisPage() {
     })
   }
 
-  const filteredProducts = availableProducts.filter((product) =>
-    product.toLowerCase().includes(productSearch.toLowerCase()),
-  )
+  const getFilteredProducts = () => {
+    if (productSearch) {
+      // When searching, show all matching products
+      return allProducts.filter(
+        (product) =>
+          product.product_sku.toLowerCase().includes(productSearch.toLowerCase()) ||
+          product.product_name.toLowerCase().includes(productSearch.toLowerCase()) ||
+          product.category.toLowerCase().includes(productSearch.toLowerCase()),
+      )
+    } else if (selectedCategory) {
+      // When category is selected, show products in that category
+      return productCategories[selectedCategory] || []
+    } else {
+      // Show all products
+      return allProducts
+    }
+  }
 
   return (
     <div className="min-h-screen bg-[#f8f5ee]">
@@ -815,7 +844,7 @@ export default function AnalysisPage() {
           onClick={() => setShowProductDropdown(false)}
         >
           <div
-            className="bg-white rounded-lg p-6 w-96 max-h-[80vh] overflow-y-auto"
+            className="bg-white rounded-lg p-6 w-[600px] max-h-[80vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-4">
@@ -827,37 +856,75 @@ export default function AnalysisPage() {
 
             <input
               type="text"
-              placeholder="Search products..."
+              placeholder="Search products, SKU, or category..."
               value={productSearch}
               onChange={(e) => setProductSearch(e.target.value)}
               className="w-full px-3 py-2 mb-4 rounded-lg border border-[#cecabf] text-sm text-black outline-none focus:border-[#938d7a]"
             />
 
-            <div className="space-y-2">
-              {filteredProducts.length > 0 ? (
-                filteredProducts.map((product) => (
+            {!productSearch && !selectedCategory ? (
+              // Show categories
+              <div className="space-y-2">
+                <p className="text-xs text-[#938d7a] mb-2">Select a category:</p>
+                {Object.keys(productCategories).length > 0 ? (
+                  Object.keys(productCategories).map((category) => (
+                    <button
+                      key={category}
+                      onClick={() => setSelectedCategory(category)}
+                      className="w-full text-left px-4 py-3 rounded-lg border border-[#efece3] bg-white hover:bg-[#f8f5ee] text-black transition-all"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium">{category}</span>
+                        <span className="text-xs text-[#938d7a]">{productCategories[category].length} products</span>
+                      </div>
+                    </button>
+                  ))
+                ) : (
+                  <p className="text-center text-[#938d7a] py-4">No categories available</p>
+                )}
+              </div>
+            ) : (
+              // Show products
+              <div className="space-y-2">
+                {selectedCategory && !productSearch && (
                   <button
-                    key={product}
-                    onClick={() => toggleProduct(product)}
-                    disabled={!selectedProducts.includes(product) && selectedProducts.length >= 3}
-                    className={`w-full text-left px-4 py-3 rounded-lg border transition-all ${
-                      selectedProducts.includes(product)
-                        ? "bg-[#cecabf] border-[#938d7a] text-black"
-                        : "bg-white border-[#efece3] text-black hover:bg-[#f8f5ee]"
-                    } disabled:opacity-50 disabled:cursor-not-allowed`}
+                    onClick={() => setSelectedCategory(null)}
+                    className="text-sm text-[#938d7a] hover:text-black mb-2 flex items-center gap-1"
                   >
-                    <div className="flex items-center justify-between">
-                      <span className="font-medium">{product}</span>
-                      {selectedProducts.includes(product) && (
-                        <span className="text-xs bg-white px-2 py-1 rounded">Selected</span>
-                      )}
-                    </div>
+                    ← Back to categories
                   </button>
-                ))
-              ) : (
-                <p className="text-center text-[#938d7a] py-4">No products available</p>
-              )}
-            </div>
+                )}
+                <p className="text-xs text-[#938d7a] mb-2">
+                  {selectedCategory ? `Products in ${selectedCategory}:` : "Search results:"}
+                </p>
+                {getFilteredProducts().length > 0 ? (
+                  getFilteredProducts().map((product) => (
+                    <button
+                      key={product.product_sku}
+                      onClick={() => toggleProduct(product.product_sku)}
+                      disabled={!selectedProducts.includes(product.product_sku) && selectedProducts.length >= 3}
+                      className={`w-full text-left px-4 py-3 rounded-lg border transition-all ${
+                        selectedProducts.includes(product.product_sku)
+                          ? "bg-[#cecabf] border-[#938d7a] text-black"
+                          : "bg-white border-[#efece3] text-black hover:bg-[#f8f5ee]"
+                      } disabled:opacity-50 disabled:cursor-not-allowed`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="font-medium">{product.product_sku}</p>
+                          <p className="text-xs text-[#938d7a]">{product.product_name || "N/A"}</p>
+                        </div>
+                        {selectedProducts.includes(product.product_sku) && (
+                          <span className="text-xs bg-white px-2 py-1 rounded">Selected</span>
+                        )}
+                      </div>
+                    </button>
+                  ))
+                ) : (
+                  <p className="text-center text-[#938d7a] py-4">No products found</p>
+                )}
+              </div>
+            )}
 
             <div className="mt-4 pt-4 border-t border-[#efece3]">
               <p className="text-xs text-[#938d7a]">Selected: {selectedProducts.length}/3 products</p>

@@ -977,6 +977,70 @@ async def get_analysis_best_sellers(
         traceback.print_exc()
         return {"success": False, "message": f"Error: {str(e)}", "data": []}
 
+# ADDED ENDPOINT START
+@app.get("/analysis/performance-products")
+async def get_performance_products(search: str = Query("", description="Search term for products")):
+    """Get products grouped by category from base_data table"""
+    try:
+        print(f"[Backend] Fetching performance products with search: '{search}'")
+        
+        if not engine:
+            return {"success": False, "categories": {}, "all_products": []}
+        
+        try:
+            query = text("""
+                SELECT DISTINCT 
+                    item as product_sku,
+                    product_name,
+                    category
+                FROM base_data
+                WHERE item IS NOT NULL
+            """)
+            
+            df = pd.read_sql(query, engine)
+            
+            if df.empty:
+                return {"success": True, "categories": {}, "all_products": []}
+            
+            # Apply search filter if provided
+            if search:
+                mask = (
+                    df['product_sku'].str.contains(search, case=False, na=False) |
+                    df['product_name'].str.contains(search, case=False, na=False) |
+                    df['category'].str.contains(search, case=False, na=False)
+                )
+                df = df[mask]
+            
+            # Group products by category
+            categories = {}
+            for category in df['category'].unique():
+                if pd.notna(category):
+                    category_products = df[df['category'] == category][['product_sku', 'product_name']].to_dict('records')
+                    categories[category] = category_products
+            
+            # Also return flat list of all products for search
+            all_products = df[['product_sku', 'product_name', 'category']].to_dict('records')
+            
+            print(f"[Backend] ✅ Found {len(categories)} categories with {len(all_products)} total products")
+            return {
+                "success": True,
+                "categories": categories,
+                "all_products": all_products
+            }
+            
+        except Exception as db_error:
+            print(f"[Backend] Database query failed: {str(db_error)}")
+            import traceback
+            traceback.print_exc()
+            return {"success": False, "categories": {}, "all_products": []}
+        
+    except Exception as e:
+        print(f"[Backend] ❌ Error fetching performance products: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return {"success": False, "categories": {}, "all_products": []}
+# ADDED ENDPOINT END
+
 # ============================================================================
 # TRAIN AND PREDICT ENDPOINTS
 # ============================================================================
