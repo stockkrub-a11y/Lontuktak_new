@@ -934,7 +934,7 @@ export default function AnalysisPage() {
                               fontSize: "14px",
                             }}
                             formatter={(value: any) => [`฿${Number(value).toLocaleString()}`, "Total Income"]}
-                            labelFormatter={(label) => `Month ${label}`}
+                            labelFormatter={(label) => `Month: ${label}`}
                             cursor={{ stroke: "#938d7a", strokeWidth: 1, strokeDasharray: "5 5" }}
                           />
                           <Legend />
