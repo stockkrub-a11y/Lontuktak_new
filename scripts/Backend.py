@@ -985,29 +985,29 @@ async def get_analysis_best_sellers(
 
 @app.get("/analysis/performance-products")
 async def get_performance_products(search: str = Query("", description="Search term for products")):
-    """Get products grouped by category from base_data table"""
+    """Get products grouped by category from base_stock table"""
     try:
-        print(f"[Backend] Fetching performance products with search: '{search}'")
+        print(f"[Backend] Fetching performance products from base_stock with search: '{search}'")
         
         if not engine:
             return {"success": False, "categories": {}, "all_products": []}
         
         try:
-            # JOIN base_data with all_products to get category information
+            # Get products from base_stock table with category information
             query = text("""
                 SELECT DISTINCT 
-                    bd.product_sku,
-                    bd.product_name,
-                    COALESCE(ap.category, 'Uncategorized') as category
-                FROM base_data bd
-                LEFT JOIN all_products ap ON bd.product_sku = ap.product_sku
-                WHERE bd.product_sku IS NOT NULL AND bd.product_name IS NOT NULL
-                ORDER BY category, bd.product_name
+                    product_sku,
+                    product_name,
+                    COALESCE("หมวดหมู่", 'Uncategorized') as category
+                FROM base_stock
+                WHERE product_sku IS NOT NULL AND product_name IS NOT NULL
+                ORDER BY category, product_name
             """)
             
             df = pd.read_sql(query, engine)
             
             if df.empty:
+                print("[Backend] No products found in base_stock table")
                 return {"success": True, "categories": {}, "all_products": []}
             
             # Apply search filter if provided (only on SKU for search box)
@@ -1025,7 +1025,7 @@ async def get_performance_products(search: str = Query("", description="Search t
             # Also return flat list of all products
             all_products = df[['product_sku', 'product_name', 'category']].to_dict('records')
             
-            print(f"[Backend] ✅ Found {len(categories)} categories with {len(all_products)} total products")
+            print(f"[Backend] ✅ Found {len(categories)} categories with {len(all_products)} total products from base_stock")
             return {
                 "success": True,
                 "categories": categories,
