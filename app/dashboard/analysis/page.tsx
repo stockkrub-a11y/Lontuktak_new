@@ -2,7 +2,23 @@
 
 import { useState, useRef, useEffect } from "react"
 import Link from "next/link"
-import { Search, Home, Package, TrendingUp, BookOpen, Bell, BarChart3, GitCompare, Award, DollarSign, Package2, Wifi, WifiOff, X, AlertCircle } from 'lucide-react'
+import {
+  Search,
+  Home,
+  Package,
+  TrendingUp,
+  BookOpen,
+  Bell,
+  BarChart3,
+  GitCompare,
+  Award,
+  DollarSign,
+  Package2,
+  Wifi,
+  WifiOff,
+  X,
+  AlertCircle,
+} from "lucide-react"
 import {
   LineChart,
   Line, // Added Line import for line chart
@@ -890,10 +906,8 @@ export default function AnalysisPage() {
                   <div className="bg-white rounded-lg p-6 border border-[#cecabf]/30">
                     <h3 className="text-xl font-bold text-black mb-6">Total Income Growth</h3>
 
-                    {console.log("[v0] Rendering LineChart with data:", totalIncomeData.chart_data)}
-
                     <div className="mb-8">
-                      <ResponsiveContainer width="100%" height={400}>
+                      <ResponsiveContainer width="100%" height={400} key="income-line-chart">
                         <LineChart data={totalIncomeData.chart_data}>
                           <CartesianGrid strokeDasharray="3 3" stroke="#efece3" />
                           <XAxis
@@ -930,7 +944,7 @@ export default function AnalysisPage() {
                             stroke="#938d7a"
                             strokeWidth={3}
                             name="Total Income (฿)"
-                            dot={{ fill: "#938d7a", r: 4 }}
+                            dot={{ fill: "#938d7a", r: 5 }}
                             activeDot={{ r: 8, fill: "#938d7a", stroke: "white", strokeWidth: 2 }}
                           />
                         </LineChart>
