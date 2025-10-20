@@ -317,6 +317,16 @@ export default function AnalysisPage() {
     }
   }
 
+  const handleResetProducts = () => {
+    setSelectedProducts([])
+    setPerformanceData(null)
+  }
+
+  const handleCompare = () => {
+    setShowProductDialog(false)
+    loadPerformanceComparison()
+  }
+
   const handleApplyIncomeFilters = () => {
     loadTotalIncome(incomeProductFilter, incomeCategoryFilter)
   }
@@ -685,8 +695,16 @@ export default function AnalysisPage() {
                       {selectedProducts.length > 0 ? `${selectedProducts.length} Selected` : "Select Products"}
                     </button>
                   </div>
+                  {selectedProducts.length > 0 && (
+                    <button
+                      onClick={handleResetProducts}
+                      className="px-4 py-2 rounded-lg bg-white border border-[#cecabf] hover:bg-[#f8f5ee] text-[#938d7a] text-sm font-medium transition-colors"
+                    >
+                      Reset
+                    </button>
+                  )}
                   <button
-                    onClick={loadPerformanceComparison}
+                    onClick={handleCompare}
                     disabled={isLoading || selectedProducts.length === 0}
                     className="px-4 py-2 rounded-lg bg-[#cecabf] hover:bg-[#b8b3a8] text-black text-sm font-medium transition-colors disabled:opacity-50"
                   >
@@ -1113,6 +1131,21 @@ export default function AnalysisPage() {
 
             <div className="mt-4 pt-4 border-t border-[#efece3]">
               <p className="text-xs text-[#938d7a]">Selected: {selectedProducts.length}/3 products</p>
+              <div className="flex gap-2 mt-3">
+                <button
+                  onClick={handleCompare}
+                  disabled={selectedProducts.length === 0}
+                  className="flex-1 px-4 py-2 rounded-lg bg-[#cecabf] hover:bg-[#b8b3a8] text-black text-sm font-medium transition-colors disabled:opacity-50"
+                >
+                  Apply Selection
+                </button>
+                <button
+                  onClick={() => setShowProductDialog(false)}
+                  className="px-4 py-2 rounded-lg bg-white border border-[#cecabf] hover:bg-[#f8f5ee] text-[#938d7a] text-sm font-medium transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           </div>
         </div>
