@@ -904,11 +904,19 @@ export default function AnalysisPage() {
 
                   {/* Chart */}
                   <div className="bg-white rounded-lg p-6 border border-[#cecabf]/30">
-                    <h3 className="text-xl font-bold text-black mb-6">Total Income Growth</h3>
+                    <div className="flex items-center justify-between mb-6">
+                      <h3 className="text-xl font-bold text-black">Total Income Growth</h3>
+                      <span className="text-xs bg-blue-100 text-blue-800 px-3 py-1 rounded-full font-medium">
+                        Line Chart View
+                      </span>
+                    </div>
 
                     <div className="mb-8">
-                      <ResponsiveContainer width="100%" height={400} key="income-line-chart">
-                        <LineChart data={totalIncomeData.chart_data}>
+                      <ResponsiveContainer width="100%" height={400}>
+                        <LineChart
+                          data={totalIncomeData.chart_data}
+                          margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                        >
                           <CartesianGrid strokeDasharray="3 3" stroke="#efece3" />
                           <XAxis
                             dataKey="month"
@@ -944,8 +952,8 @@ export default function AnalysisPage() {
                             stroke="#938d7a"
                             strokeWidth={3}
                             name="Total Income (฿)"
-                            dot={{ fill: "#938d7a", r: 5 }}
-                            activeDot={{ r: 8, fill: "#938d7a", stroke: "white", strokeWidth: 2 }}
+                            dot={{ fill: "#938d7a", r: 6 }}
+                            activeDot={{ r: 10, fill: "#938d7a", stroke: "white", strokeWidth: 3 }}
                           />
                         </LineChart>
                       </ResponsiveContainer>
