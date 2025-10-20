@@ -21,6 +21,7 @@ import {
 } from "lucide-react"
 import {
   LineChart,
+  Line, // Added Line import for line chart
   XAxis,
   YAxis,
   CartesianGrid,
@@ -30,6 +31,7 @@ import {
   Bar,
   BarChart,
   Legend,
+  Tooltip, // Added Tooltip import
 } from "recharts"
 import {
   getAnalysisHistoricalSales,
@@ -914,8 +916,37 @@ export default function AnalysisPage() {
                             label={{ value: "Month", position: "insideBottom", offset: -5 }}
                           />
                           <YAxis stroke="#938d7a" label={{ value: "Income (฿)", angle: -90, position: "insideLeft" }} />
+                          <Tooltip
+                            contentStyle={{
+                              backgroundColor: "white",
+                              border: "2px solid #938d7a",
+                              borderRadius: "8px",
+                              padding: "12px",
+                              boxShadow: "0 4px 6px rgba(0,0,0,0.1)",
+                            }}
+                            labelStyle={{
+                              color: "#938d7a",
+                              fontWeight: "600",
+                              marginBottom: "4px",
+                            }}
+                            itemStyle={{
+                              color: "#1e1e1e",
+                              fontSize: "14px",
+                            }}
+                            formatter={(value: any) => [`฿${Number(value).toLocaleString()}`, "Total Income"]}
+                            labelFormatter={(label) => `Month ${label}`}
+                            cursor={{ stroke: "#938d7a", strokeWidth: 1, strokeDasharray: "5 5" }}
+                          />
                           <Legend />
-                          <Bar dataKey="total_income" fill="#938d7a" name="Total Income (฿)" />
+                          <Line
+                            type="monotone"
+                            dataKey="total_income"
+                            stroke="#938d7a"
+                            strokeWidth={3}
+                            name="Total Income (฿)"
+                            dot={{ fill: "#938d7a", r: 4 }}
+                            activeDot={{ r: 8, fill: "#938d7a", stroke: "white", strokeWidth: 2 }}
+                          />
                         </LineChart>
                       </ResponsiveContainer>
                     </div>
