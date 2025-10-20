@@ -2,23 +2,7 @@
 
 import { useState, useRef, useEffect } from "react"
 import Link from "next/link"
-import {
-  Search,
-  Home,
-  Package,
-  TrendingUp,
-  BookOpen,
-  Bell,
-  BarChart3,
-  GitCompare,
-  Award,
-  DollarSign,
-  Package2,
-  Wifi,
-  WifiOff,
-  X,
-  AlertCircle,
-} from "lucide-react"
+import { Search, Home, Package, TrendingUp, BookOpen, Bell, BarChart3, GitCompare, Award, DollarSign, Package2, Wifi, WifiOff, X, AlertCircle } from 'lucide-react'
 import {
   LineChart,
   Line, // Added Line import for line chart
@@ -905,6 +889,8 @@ export default function AnalysisPage() {
                   {/* Chart */}
                   <div className="bg-white rounded-lg p-6 border border-[#cecabf]/30">
                     <h3 className="text-xl font-bold text-black mb-6">Total Income Growth</h3>
+
+                    {console.log("[v0] Rendering LineChart with data:", totalIncomeData.chart_data)}
 
                     <div className="mb-8">
                       <ResponsiveContainer width="100%" height={400}>
