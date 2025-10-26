@@ -142,7 +142,7 @@ export async function getNotifications() {
           Status: string
           Description: string
         }>
-      >("/api/notifications")
+      >("/notifications")
 
     console.log("[v0] getNotifications() result:", result)
     return result
@@ -165,7 +165,7 @@ export async function getNotificationDetail(productName: string) {
     Reorder_Qty: number
     Status: string
     Description: string
-  }>(`/api/notifications/${encodeURIComponent(productName)}`)
+  }>(`/notifications/${encodeURIComponent(productName)}`)
 }
 
 export async function getDashboardAnalytics() {

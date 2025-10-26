@@ -56,7 +56,8 @@ export default function AnalysisPage() {
   const [selectedBaseSku, setSelectedBaseSku] = useState("")
   const [baseSKUs, setBaseSKUs] = useState<string[]>([])
   const [skuSearch, setSkuSearch] = useState("")
-  const [showSkuDropdown, setShowSkuDropdown] = useState(false)
+  const [searchSuggestions, setSearchSuggestions] = useState<Array<{ value: string; type: string; label: string }>>([])
+  const [showSuggestions, setShowSuggestions] = useState(false)
   const skuInputRef = useRef<HTMLDivElement>(null)
 
   // Performance Comparison states
@@ -110,41 +111,44 @@ export default function AnalysisPage() {
     }
   }
 
-  const fetchSkuSuggestions = async (searchTerm: string) => {
-    if (!searchTerm.trim()) {
-      setBaseSKUs([])
-      setShowSkuDropdown(false)
+  const fetchSearchSuggestions = async (searchTerm: string) => {
+    if (!searchTerm.trim() || searchTerm.length < 1) {
+      setSearchSuggestions([])
+      setShowSuggestions(false)
       return
     }
 
     try {
-      const data = await getAnalysisBaseSKUs(searchTerm)
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/analysis/search-suggestions?search=${encodeURIComponent(searchTerm)}`,
+      )
+      const data = await response.json()
 
-      if (data && data.success && data.base_skus.length > 0) {
-        setBaseSKUs(data.base_skus)
-        setShowSkuDropdown(true)
+      if (data.success && data.suggestions.length > 0) {
+        setSearchSuggestions(data.suggestions)
+        setShowSuggestions(true)
       } else {
-        setBaseSKUs([])
-        setShowSkuDropdown(false)
+        setSearchSuggestions([])
+        setShowSuggestions(false)
       }
     } catch (error) {
-      console.error("Error fetching SKU suggestions:", error)
-      setBaseSKUs([])
-      setShowSkuDropdown(false)
+      console.error("Error fetching search suggestions:", error)
+      setSearchSuggestions([])
+      setShowSuggestions(false)
     }
   }
 
   const handleSkuInputChange = (value: string) => {
     setSkuSearch(value)
     setSelectedBaseSku(value)
-    fetchSkuSuggestions(value)
+    fetchSearchSuggestions(value)
   }
 
-  const handleSelectSku = (sku: string) => {
-    setSelectedBaseSku(sku)
-    setSkuSearch(sku) // Update search term as well
-    setShowSkuDropdown(false)
-    setBaseSKUs([])
+  const handleSelectSuggestion = (value: string) => {
+    setSelectedBaseSku(value)
+    setSkuSearch(value)
+    setShowSuggestions(false)
+    setSearchSuggestions([])
   }
 
   const loadBaseSKUs = async () => {
@@ -387,18 +391,19 @@ export default function AnalysisPage() {
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (skuInputRef.current && !skuInputRef.current.contains(event.target as Node)) {
-        setShowSkuDropdown(false)
+        setShowSuggestions(false) // Changed from setShowSkuDropdown
       }
     }
 
-    if (showSkuDropdown) {
+    if (showSuggestions) {
+      // Changed from showSkuDropdown
       document.addEventListener("mousedown", handleClickOutside)
     }
 
     return () => {
       document.removeEventListener("mousedown", handleClickOutside)
     }
-  }, [showSkuDropdown])
+  }, [showSuggestions]) // Changed from showSkuDropdown
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -620,18 +625,34 @@ export default function AnalysisPage() {
                         value={skuSearch}
                         onChange={(e) => handleSkuInputChange(e.target.value)}
                         onKeyDown={(e) => e.key === "Enter" && loadHistoricalSales()}
-                        onFocus={() => skuSearch.trim() && baseSKUs.length > 0 && setShowSkuDropdown(true)}
+                        onFocus={() => skuSearch.trim() && searchSuggestions.length > 0 && setShowSuggestions(true)} // Changed from showSkuDropdown
                         className="w-80 px-4 py-2 rounded-lg border border-[#cecabf] text-sm text-black outline-none focus:border-[#938d7a]"
                       />
-                      {showSkuDropdown && baseSKUs.length > 0 && (
+                      {showSuggestions && searchSuggestions.length > 0 && (
                         <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-[#cecabf] rounded-lg shadow-lg max-h-60 overflow-y-auto z-50">
-                          {baseSKUs.map((sku) => (
+                          {searchSuggestions.map((suggestion, idx) => (
                             <button
-                              key={sku}
-                              onClick={() => handleSelectSku(sku)}
-                              className="w-full px-4 py-2 text-left text-sm text-black hover:bg-[#f8f5ee] transition-colors"
+                              key={`${suggestion.type}-${suggestion.value}-${idx}`}
+                              onClick={() => handleSelectSuggestion(suggestion.value)}
+                              className="w-full px-4 py-2 text-left text-sm hover:bg-[#f8f5ee] transition-colors border-b border-[#efece3] last:border-b-0"
                             >
-                              {sku}
+                              <div className="flex items-center justify-between">
+                                <div className="flex-1">
+                                  <p className="text-black font-medium">{suggestion.value}</p>
+                                  {suggestion.label && suggestion.label !== suggestion.value && (
+                                    <p className="text-xs text-[#938d7a] mt-0.5">{suggestion.label}</p>
+                                  )}
+                                </div>
+                                <span
+                                  className={`ml-2 px-2 py-0.5 rounded text-xs font-medium ${
+                                    suggestion.type === "SKU"
+                                      ? "bg-blue-100 text-blue-800"
+                                      : "bg-green-100 text-green-800"
+                                  }`}
+                                >
+                                  {suggestion.type}
+                                </span>
+                              </div>
                             </button>
                           ))}
                         </div>
@@ -650,7 +671,9 @@ export default function AnalysisPage() {
                 {!selectedBaseSku.trim() && !historicalData && (
                   <div className="text-center py-12 text-[#938d7a]">
                     <p>Enter a SKU or category above to view historical stock data</p>
-                    <p className="text-xs mt-2">You can search by product SKU or category name</p>
+                    <p className="text-xs mt-2">
+                      SKU: Shows sales over time | Category: Shows all products in category
+                    </p>
                   </div>
                 )}
 
@@ -658,37 +681,97 @@ export default function AnalysisPage() {
                   <>
                     <div className="mb-8">
                       <ResponsiveContainer width="100%" height={400}>
-                        <BarChart data={historicalData.chart_data}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#efece3" />
-                          <XAxis dataKey="category" stroke="#938d7a" />
-                          <YAxis stroke="#938d7a" />
-                          <Tooltip
-                            contentStyle={{
-                              backgroundColor: "white",
-                              border: "2px solid #938d7a",
-                              borderRadius: "8px",
-                              padding: "12px",
-                              boxShadow: "0 4px 6px rgba(0,0,0,0.1)",
-                            }}
-                            labelStyle={{
-                              color: "#938d7a",
-                              fontWeight: "600",
-                              marginBottom: "8px",
-                              fontSize: "14px",
-                            }}
-                            itemStyle={{
-                              color: "#1e1e1e",
-                              fontSize: "14px",
-                              padding: "4px 0",
-                            }}
-                            formatter={(value: any) => [value.toLocaleString(), "Total Stock"]}
-                            labelFormatter={(label) => `Category: ${label}`}
-                            cursor={{ fill: "rgba(147, 141, 122, 0.1)" }}
-                          />
-                          {/* </CHANGE> */}
-                          <Legend />
-                          <Bar dataKey="total_stock" fill="#938d7a" name="Total Stock" />
-                        </BarChart>
+                        {historicalData.search_type === "sku" ? (
+                          // Line chart for SKU search (sales over time)
+                          <LineChart data={historicalData.chart_data}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#efece3" />
+                            <XAxis
+                              dataKey="month"
+                              stroke="#938d7a"
+                              label={{ value: "Month", position: "insideBottom", offset: -5, fill: "#938d7a" }}
+                              angle={-45}
+                              textAnchor="end"
+                              height={80}
+                            />
+                            <YAxis
+                              stroke="#938d7a"
+                              label={{ value: "Quantity Sold", angle: -90, position: "insideLeft", fill: "#938d7a" }}
+                            />
+                            <Tooltip
+                              contentStyle={{
+                                backgroundColor: "white",
+                                border: "2px solid #938d7a",
+                                borderRadius: "8px",
+                                padding: "12px",
+                                boxShadow: "0 4px 6px rgba(0,0,0,0.1)",
+                              }}
+                              labelStyle={{
+                                color: "#938d7a",
+                                fontWeight: "600",
+                                marginBottom: "8px",
+                                fontSize: "14px",
+                              }}
+                              itemStyle={{
+                                color: "#1e1e1e",
+                                fontSize: "14px",
+                                padding: "4px 0",
+                              }}
+                              formatter={(value: any) => [value.toLocaleString(), "Quantity Sold"]}
+                              cursor={{ stroke: "#938d7a", strokeWidth: 1, strokeDasharray: "5 5" }}
+                            />
+                            <Legend />
+                            <Line
+                              type="monotone"
+                              dataKey="quantity"
+                              stroke="#938d7a"
+                              strokeWidth={3}
+                              name="Quantity Sold"
+                              dot={{ fill: "#938d7a", r: 6 }}
+                              activeDot={{ r: 10, fill: "#938d7a", stroke: "white", strokeWidth: 3 }}
+                            />
+                          </LineChart>
+                        ) : (
+                          // Bar chart for category search (products comparison)
+                          <BarChart data={historicalData.chart_data}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#efece3" />
+                            <XAxis
+                              dataKey="product_name"
+                              stroke="#938d7a"
+                              label={{ value: "Product Name", position: "insideBottom", offset: -5, fill: "#938d7a" }}
+                              angle={-45}
+                              textAnchor="end"
+                              height={100}
+                            />
+                            <YAxis
+                              stroke="#938d7a"
+                              label={{ value: "Stock Level", angle: -90, position: "insideLeft", fill: "#938d7a" }}
+                            />
+                            <Tooltip
+                              contentStyle={{
+                                backgroundColor: "white",
+                                border: "2px solid #938d7a",
+                                borderRadius: "8px",
+                                padding: "12px",
+                                boxShadow: "0 4px 6px rgba(0,0,0,0.1)",
+                              }}
+                              labelStyle={{
+                                color: "#938d7a",
+                                fontWeight: "600",
+                                marginBottom: "8px",
+                                fontSize: "14px",
+                              }}
+                              itemStyle={{
+                                color: "#1e1e1e",
+                                fontSize: "14px",
+                                padding: "4px 0",
+                              }}
+                              formatter={(value: any) => [value.toLocaleString(), "Stock Level"]}
+                              cursor={{ fill: "rgba(147, 141, 122, 0.1)" }}
+                            />
+                            <Legend />
+                            <Bar dataKey="stock_level" fill="#938d7a" name="Stock Level" />
+                          </BarChart>
+                        )}
                       </ResponsiveContainer>
                     </div>
 
@@ -698,9 +781,15 @@ export default function AnalysisPage() {
                           <tr className="border-b border-[#efece3]">
                             <th className="text-left py-3 px-4 text-sm font-medium text-black">SKU</th>
                             <th className="text-left py-3 px-4 text-sm font-medium text-black">Product Name</th>
-                            <th className="text-center py-3 px-4 text-sm font-medium text-black">Stock Level</th>
-                            <th className="text-center py-3 px-4 text-sm font-medium text-black">Category</th>
-                            <th className="text-center py-3 px-4 text-sm font-medium text-black">Status</th>
+                            <th className="text-center py-3 px-4 text-sm font-medium text-black">
+                              {historicalData.search_type === "sku" ? "Total Quantity Sold" : "Stock Level"}
+                            </th>
+                            {historicalData.search_type === "category" && (
+                              <>
+                                <th className="text-center py-3 px-4 text-sm font-medium text-black">Category</th>
+                                <th className="text-center py-3 px-4 text-sm font-medium text-black">Status</th>
+                              </>
+                            )}
                           </tr>
                         </thead>
                         <tbody>
@@ -708,21 +797,27 @@ export default function AnalysisPage() {
                             <tr key={idx} className="border-b border-[#efece3]">
                               <td className="py-3 px-4 text-sm text-black font-medium">{row.product_sku}</td>
                               <td className="py-3 px-4 text-sm text-black">{row.product_name}</td>
-                              <td className="py-3 px-4 text-sm text-black text-center">{row.stock_level}</td>
-                              <td className="py-3 px-4 text-sm text-black text-center">{row.category}</td>
-                              <td className="py-3 px-4 text-sm text-center">
-                                <span
-                                  className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                    row.flag === "active"
-                                      ? "bg-green-100 text-green-800"
-                                      : row.flag === "inactive"
-                                        ? "bg-red-100 text-red-800"
-                                        : "bg-gray-100 text-gray-800"
-                                  }`}
-                                >
-                                  {row.flag}
-                                </span>
+                              <td className="py-3 px-4 text-sm text-black text-center">
+                                {historicalData.search_type === "sku" ? row.total_quantity : row.stock_level}
                               </td>
+                              {historicalData.search_type === "category" && (
+                                <>
+                                  <td className="py-3 px-4 text-sm text-black text-center">{row.category}</td>
+                                  <td className="py-3 px-4 text-sm text-center">
+                                    <span
+                                      className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                        row.flag === "active"
+                                          ? "bg-green-100 text-green-800"
+                                          : row.flag === "inactive"
+                                            ? "bg-red-100 text-red-800"
+                                            : "bg-gray-100 text-gray-800"
+                                      }`}
+                                    >
+                                      {row.flag}
+                                    </span>
+                                  </td>
+                                </>
+                              )}
                             </tr>
                           ))}
                         </tbody>

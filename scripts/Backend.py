@@ -763,59 +763,116 @@ async def get_analysis_historical_sales(sku: str = Query(..., description="Produ
         print(f"[Backend] Fetching historical stock data for: {sku}")
         
         if not engine:
-            return {"success": False, "message": "Database not available", "chart_data": [], "table_data": [], "sizes": []}
+            return {"success": False, "message": "Database not available", "chart_data": [], "table_data": [], "search_type": "unknown"}
         
         try:
-            query = text("""
-                SELECT 
-                    product_sku,
-                    product_name,
-                    stock_level,
-                    "หมวดหมู่" as category,
-                    flag,
-                    unchanged_counter,
-                    updated_at
+            # Check if it's a specific SKU
+            sku_check_query = text("""
+                SELECT COUNT(*) as count
                 FROM base_stock
-                WHERE product_sku ILIKE :sku_pattern OR "หมวดหมู่" ILIKE :sku_pattern
-                ORDER BY product_sku ASC
+                WHERE product_sku = :sku
             """)
             
-            # Execute with proper parameter binding
-            df = pd.read_sql(query, engine, params={"sku_pattern": f"%{sku}%"})
+            with engine.connect() as conn:
+                sku_result = conn.execute(sku_check_query, {"sku": sku})
+                is_sku = sku_result.fetchone()[0] > 0
             
-            if df.empty:
-                print(f"[Backend] No historical data found for: {sku}")
+            if is_sku:
+                print(f"[Backend] Detected SKU search for: {sku}")
+                
+                sales_query = text("""
+                    SELECT 
+                        product_sku,
+                        product_name,
+                        sales_month as month,
+                        sales_year as year,
+                        SUM(total_quantity) as quantity
+                    FROM base_data
+                    WHERE product_sku = :sku
+                    GROUP BY product_sku, product_name, sales_month, sales_year
+                    ORDER BY sales_year, sales_month
+                """)
+                
+                df = pd.read_sql(sales_query, engine, params={"sku": sku})
+                
+                if df.empty:
+                    return {
+                        "success": True,
+                        "message": "No sales data found for this SKU",
+                        "chart_data": [],
+                        "table_data": [],
+                        "search_type": "sku"
+                    }
+                
+                # Format chart data for line chart (month on X-axis)
+                chart_data = []
+                for _, row in df.iterrows():
+                    month_names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+                    month_label = f"{month_names[int(row['month'])-1]} {int(row['year'])}"
+                    chart_data.append({
+                        "month": month_label,
+                        "quantity": int(row['quantity'])
+                    })
+                
+                # Table data
+                table_data = [{
+                    "product_sku": sku,
+                    "product_name": df.iloc[0]['product_name'],
+                    "total_quantity": int(df['quantity'].sum())
+                }]
+                
                 return {
                     "success": True,
-                    "message": "No data found for this search term",
-                    "chart_data": [],
-                    "table_data": [],
-                    "sizes": []
+                    "message": "Sales data retrieved successfully",
+                    "chart_data": chart_data,
+                    "table_data": table_data,
+                    "search_type": "sku"
                 }
             
-            print(f"[Backend] ✅ Retrieved {len(df)} stock records")
-            
-            # Prepare chart data (group by category or SKU prefix)
-            chart_data = df.groupby('category').agg({
-                'stock_level': 'sum'
-            }).reset_index()
-            chart_data.columns = ['category', 'total_stock']
-            
-            # Prepare table data
-            table_data = df[['product_sku', 'product_name', 'stock_level', 'category', 'flag', 'unchanged_counter']].copy()
-            if 'updated_at' in df.columns:
-                table_data['updated_at'] = df['updated_at'].astype(str)
-            
-            # Get unique categories
-            categories = df['category'].unique().tolist()
-            
-            return {
-                "success": True,
-                "message": "Historical stock data retrieved successfully",
-                "chart_data": chart_data.to_dict('records'),
-                "table_data": table_data.to_dict('records'),
-                "sizes": categories
-            }
+            else:
+                print(f"[Backend] Detected category search for: {sku}")
+                
+                category_query = text("""
+                    SELECT 
+                        product_sku,
+                        product_name,
+                        stock_level,
+                        "หมวดหมู่" as category,
+                        flag
+                    FROM base_stock
+                    WHERE "หมวดหมู่" ILIKE :category_pattern
+                    ORDER BY product_name ASC
+                """)
+                
+                df = pd.read_sql(category_query, engine, params={"category_pattern": f"%{sku}%"})
+                
+                if df.empty:
+                    return {
+                        "success": True,
+                        "message": "No products found in this category",
+                        "chart_data": [],
+                        "table_data": [],
+                        "search_type": "category"
+                    }
+                
+                # Format chart data for bar chart (product names on X-axis)
+                chart_data = []
+                for _, row in df.iterrows():
+                    chart_data.append({
+                        "product_name": row['product_name'][:30] + "..." if len(row['product_name']) > 30 else row['product_name'],
+                        "stock_level": int(row['stock_level'])
+                    })
+                
+                # Table data
+                table_data = df[['product_sku', 'product_name', 'stock_level', 'category', 'flag']].to_dict('records')
+                
+                return {
+                    "success": True,
+                    "message": f"Found {len(df)} products in category",
+                    "chart_data": chart_data,
+                    "table_data": table_data,
+                    "search_type": "category"
+                }
             
         except Exception as db_error:
             print(f"[Backend] Database query failed: {str(db_error)}")
@@ -826,7 +883,7 @@ async def get_analysis_historical_sales(sku: str = Query(..., description="Produ
                 "message": f"Database error: {str(db_error)}",
                 "chart_data": [],
                 "table_data": [],
-                "sizes": []
+                "search_type": "unknown"
             }
         
     except Exception as e:
@@ -838,7 +895,7 @@ async def get_analysis_historical_sales(sku: str = Query(..., description="Produ
             "message": f"Error: {str(e)}",
             "chart_data": [],
             "table_data": [],
-            "sizes": []
+            "search_type": "unknown"
         }
 
 @app.post("/analysis/performance")
@@ -1151,6 +1208,62 @@ async def get_total_income(product_sku: str = "", category: str = ""):
             "table_data": [],
             "grand_total": 0
         }
+
+@app.get("/analysis/search-suggestions")
+async def get_search_suggestions(search: str = Query("", description="Search term for SKUs or categories")):
+    """Get search suggestions for both SKUs and categories"""
+    try:
+        print(f"[Backend] Fetching search suggestions for: '{search}'")
+        
+        if not engine:
+            return {"success": False, "suggestions": []}
+        
+        if not search or len(search) < 1:
+            return {"success": True, "suggestions": []}
+        
+        try:
+            query = text("""
+                SELECT DISTINCT 
+                    product_sku as value,
+                    'SKU' as type,
+                    product_name as label
+                FROM base_stock
+                WHERE product_sku ILIKE :search_pattern
+                
+                UNION
+                
+                SELECT DISTINCT 
+                    "หมวดหมู่" as value,
+                    'Category' as type,
+                    "หมวดหมู่" as label
+                FROM base_stock
+                WHERE "หมวดหมู่" ILIKE :search_pattern
+                AND "หมวดหมู่" IS NOT NULL
+                
+                ORDER BY type DESC, value ASC
+                LIMIT 10
+            """)
+            
+            df = pd.read_sql(query, engine, params={"search_pattern": f"%{search}%"})
+            
+            if not df.empty:
+                suggestions = df.to_dict('records')
+                print(f"[Backend] ✅ Found {len(suggestions)} suggestions")
+                return {"success": True, "suggestions": suggestions}
+            else:
+                return {"success": True, "suggestions": []}
+                
+        except Exception as db_error:
+            print(f"[Backend] Database query failed: {str(db_error)}")
+            import traceback
+            traceback.print_exc()
+            return {"success": False, "suggestions": []}
+        
+    except Exception as e:
+        print(f"[Backend] ❌ Error fetching search suggestions: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return {"success": False, "suggestions": []}
 
 # ============================================================================
 # TRAIN AND PREDICT ENDPOINTS
