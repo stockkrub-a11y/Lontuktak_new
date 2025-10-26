@@ -86,9 +86,16 @@ export default function AnalysisPage() {
   const isMobile = useMediaQuery("(max-width: 768px)")
 
   const CustomHistoricalTooltip = ({ active, payload, label }: any) => {
+    console.log("[v0] Tooltip active:", active)
+    console.log("[v0] Tooltip payload:", payload)
+    console.log("[v0] Tooltip label:", label)
+
     if (active && payload && payload.length > 0) {
-      const fullProductName = payload[0].payload.product_name || label
-      const stockLevel = payload[0].value
+      const dataPoint = payload[0].payload
+      const fullProductName = dataPoint.product_name || label
+      const stockLevel = dataPoint.stock_level || payload[0].value
+
+      console.log("[v0] Displaying - Product:", fullProductName, "Stock:", stockLevel)
 
       return (
         <div
@@ -775,7 +782,10 @@ export default function AnalysisPage() {
                           </LineChart>
                         ) : (
                           // Bar chart for category search (products comparison)
-                          <BarChart data={historicalData.chart_data}>
+                          <BarChart
+                            data={historicalData.chart_data}
+                            key={`barchart-${historicalData.chart_data.length}`}
+                          >
                             <CartesianGrid strokeDasharray="3 3" stroke="#efece3" />
                             <XAxis
                               dataKey="display_name"
@@ -792,6 +802,7 @@ export default function AnalysisPage() {
                             <Tooltip
                               content={<CustomHistoricalTooltip />}
                               cursor={{ fill: "rgba(147, 141, 122, 0.1)" }}
+                              isAnimationActive={false}
                             />
                             <Legend />
                             <Bar dataKey="stock_level" fill="#938d7a" name="Stock Level" barSize={80} />
