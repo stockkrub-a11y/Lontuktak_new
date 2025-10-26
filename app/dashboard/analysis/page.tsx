@@ -755,8 +755,21 @@ export default function AnalysisPage() {
                       <ResponsiveContainer width="100%" height={400}>
                         <ScatterChart>
                           <CartesianGrid strokeDasharray="3 3" stroke="#efece3" />
-                          <XAxis type="number" dataKey="month" name="Month" domain={[0, 13]} stroke="#938d7a" />
-                          <YAxis type="number" dataKey="value" name="Value" stroke="#938d7a" />
+                          <XAxis
+                            type="number"
+                            dataKey="month"
+                            name="Month"
+                            domain={[0, 13]}
+                            stroke="#938d7a"
+                            label={{ value: "Month", position: "insideBottom", offset: -5, fill: "#938d7a" }}
+                          />
+                          <YAxis
+                            type="number"
+                            dataKey="value"
+                            name="Quantity"
+                            stroke="#938d7a"
+                            label={{ value: "Quantity", angle: -90, position: "insideLeft", fill: "#938d7a" }}
+                          />
                           {Object.entries(performanceData.chart_data).map(([sku, data]: [string, any], idx) => (
                             <Scatter
                               key={sku}
