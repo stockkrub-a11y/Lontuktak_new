@@ -698,12 +698,22 @@ export default function AnalysisPage() {
                       Select Products
                     </button>
                     {selectedProducts.length > 0 && (
-                      <button
-                        onClick={handleResetProducts}
-                        className="px-4 py-2 rounded-lg bg-white border border-[#cecabf] hover:bg-[#f8f5ee] text-[#938d7a] text-sm font-medium transition-colors"
-                      >
-                        Reset
-                      </button>
+                      <>
+                        <button
+                          onClick={loadPerformanceComparison}
+                          disabled={isLoading}
+                          className="px-4 py-2 rounded-lg bg-[#938d7a] hover:bg-[#7a7565] text-white text-sm font-medium flex items-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <GitCompare className="w-4 h-4" />
+                          {isLoading ? "Comparing..." : "Compare"}
+                        </button>
+                        <button
+                          onClick={handleResetProducts}
+                          className="px-4 py-2 rounded-lg bg-white border border-[#cecabf] hover:bg-[#f8f5ee] text-[#938d7a] text-sm font-medium transition-colors"
+                        >
+                          Reset
+                        </button>
+                      </>
                     )}
                   </div>
                 </div>
@@ -771,7 +781,7 @@ export default function AnalysisPage() {
                     <p>
                       {selectedProducts.length === 0
                         ? "Select products using the 'Select Products' button above"
-                        : "Click 'Compare' button to view performance data"}
+                        : "Click the 'Compare' button above to view performance data"}
                     </p>
                   </div>
                 )}
