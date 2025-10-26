@@ -86,25 +86,12 @@ export default function AnalysisPage() {
   const isMobile = useMediaQuery("(max-width: 768px)")
 
   const CustomHistoricalTooltip = ({ active, payload, label }: any) => {
-    console.log("[v0] ===== TOOLTIP DEBUG =====")
-    console.log("[v0] Active:", active)
-    console.log("[v0] Label:", label)
-    console.log("[v0] Payload:", JSON.stringify(payload, null, 2))
-
     if (active && payload && payload.length > 0) {
-      console.log("[v0] Payload[0]:", JSON.stringify(payload[0], null, 2))
-      console.log("[v0] Payload[0].payload:", JSON.stringify(payload[0].payload, null, 2))
-
-      // Get the data directly from the payload - this is the actual data point being hovered
       const dataPoint = payload[0].payload
 
       if (dataPoint && dataPoint.product_name && dataPoint.stock_level !== undefined) {
         const fullProductName = dataPoint.product_name
         const stockLevel = dataPoint.stock_level
-
-        console.log("[v0] Displaying - Product:", fullProductName)
-        console.log("[v0] Displaying - Stock:", stockLevel)
-        console.log("[v0] ===== END TOOLTIP DEBUG =====")
 
         return (
           <div
@@ -145,8 +132,6 @@ export default function AnalysisPage() {
       }
     }
 
-    console.log("[v0] Tooltip not rendering - conditions not met")
-    console.log("[v0] ===== END TOOLTIP DEBUG =====")
     return null
   }
 
@@ -160,6 +145,12 @@ export default function AnalysisPage() {
       const data = await getAnalysisHistoricalSales(selectedBaseSku)
 
       if (data.success) {
+        if (data.chart_data && data.chart_data.length > 0) {
+          data.chart_data = data.chart_data.map((item: any, index: number) => ({
+            ...item,
+            index: index,
+          }))
+        }
         setHistoricalData(data)
         setBackendConnected(true)
         setShowOfflineBanner(false)
@@ -801,12 +792,16 @@ export default function AnalysisPage() {
                           >
                             <CartesianGrid strokeDasharray="3 3" stroke="#efece3" />
                             <XAxis
-                              dataKey="display_name"
+                              dataKey="index"
                               stroke="#938d7a"
                               label={{ value: "Product Name", position: "insideBottom", offset: -5, fill: "#938d7a" }}
                               angle={-45}
                               textAnchor="end"
                               height={100}
+                              tickFormatter={(index) => {
+                                const item = historicalData.chart_data[index]
+                                return item ? item.display_name : ""
+                              }}
                             />
                             <YAxis
                               stroke="#938d7a"
