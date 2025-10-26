@@ -161,29 +161,44 @@ export default function AnalysisPage() {
   }
 
   const loadPerformanceComparison = async () => {
+    console.log("[v0] Compare button clicked")
+    console.log("[v0] Selected products:", selectedProducts)
+
     if (selectedProducts.length === 0) {
+      console.log("[v0] No products selected, returning early")
+      alert("Please select at least one product to compare")
       return
     }
 
     setIsLoading(true)
+    console.log("[v0] Starting API call to compare products...")
+
     try {
       const data = await getAnalysisPerformance(selectedProducts)
+      console.log("[v0] API response received:", data)
 
       if (data.success) {
+        console.log("[v0] Comparison successful, setting performance data")
+        console.log("[v0] Chart data:", data.chart_data)
+        console.log("[v0] Table data:", data.table_data)
         setPerformanceData(data)
         setBackendConnected(true)
         setShowOfflineBanner(false)
       } else {
+        console.log("[v0] API returned success=false:", data.message)
         setPerformanceData({ chart_data: {}, table_data: [], message: data.message })
         setBackendConnected(true)
+        alert(data.message || "Failed to load comparison data")
       }
     } catch (error) {
-      console.error("Error loading performance comparison:", error)
+      console.error("[v0] Error loading performance comparison:", error)
       setBackendConnected(false)
       setShowOfflineBanner(true)
       setPerformanceData(null)
+      alert("Failed to connect to backend. Please make sure the backend server is running.")
     } finally {
       setIsLoading(false)
+      console.log("[v0] Compare operation completed")
     }
   }
 
