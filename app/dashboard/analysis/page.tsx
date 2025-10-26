@@ -26,8 +26,6 @@ import {
   YAxis,
   CartesianGrid,
   ResponsiveContainer,
-  Scatter,
-  ScatterChart,
   Bar,
   BarChart,
   Legend,
@@ -181,7 +179,23 @@ export default function AnalysisPage() {
         console.log("[v0] Comparison successful, setting performance data")
         console.log("[v0] Chart data:", data.chart_data)
         console.log("[v0] Table data:", data.table_data)
-        setPerformanceData(data)
+
+        const transformedChartData = data.chart_data
+        const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+        const currentYear = new Date().getFullYear()
+
+        // Transform each product's data to include formatted month labels
+        Object.keys(transformedChartData).forEach((sku) => {
+          transformedChartData[sku] = transformedChartData[sku].map((point: any) => ({
+            ...point,
+            monthLabel:
+              point.month >= 1 && point.month <= 12
+                ? `${monthNames[point.month - 1]} ${currentYear}`
+                : `Month ${point.month}`,
+          }))
+        })
+
+        setPerformanceData({ ...data, chart_data: transformedChartData })
         setBackendConnected(true)
         setShowOfflineBanner(false)
       } else {
@@ -753,33 +767,88 @@ export default function AnalysisPage() {
                   <>
                     <div className="mb-8">
                       <ResponsiveContainer width="100%" height={400}>
-                        <ScatterChart>
+                        <LineChart
+                          data={(() => {
+                            // Combine all products' data into a single array with all months
+                            const allMonths = new Set<number>()
+                            Object.values(performanceData.chart_data).forEach((productData: any) => {
+                              productData.forEach((point: any) => allMonths.add(point.month))
+                            })
+
+                            // Create a data point for each month
+                            return Array.from(allMonths)
+                              .sort((a, b) => a - b)
+                              .map((month) => {
+                                const monthNames = [
+                                  "Jan",
+                                  "Feb",
+                                  "Mar",
+                                  "Apr",
+                                  "May",
+                                  "Jun",
+                                  "Jul",
+                                  "Aug",
+                                  "Sep",
+                                  "Oct",
+                                  "Nov",
+                                  "Dec",
+                                ]
+                                const currentYear = new Date().getFullYear()
+                                const dataPoint: any = {
+                                  month,
+                                  monthLabel:
+                                    month >= 1 && month <= 12
+                                      ? `${monthNames[month - 1]} ${currentYear}`
+                                      : `Month ${month}`,
+                                }
+
+                                // Add each product's value for this month
+                                Object.entries(performanceData.chart_data).forEach(([sku, data]: [string, any]) => {
+                                  const point = data.find((p: any) => p.month === month)
+                                  dataPoint[sku] = point ? point.value : null
+                                })
+
+                                return dataPoint
+                              })
+                          })()}
+                        >
                           <CartesianGrid strokeDasharray="3 3" stroke="#efece3" />
                           <XAxis
-                            type="number"
-                            dataKey="month"
-                            name="Month"
-                            domain={[0, 13]}
+                            dataKey="monthLabel"
                             stroke="#938d7a"
                             label={{ value: "Month", position: "insideBottom", offset: -5, fill: "#938d7a" }}
+                            angle={-45}
+                            textAnchor="end"
+                            height={80}
                           />
                           <YAxis
-                            type="number"
-                            dataKey="value"
-                            name="Quantity"
                             stroke="#938d7a"
                             label={{ value: "Quantity", angle: -90, position: "insideLeft", fill: "#938d7a" }}
                           />
-                          {Object.entries(performanceData.chart_data).map(([sku, data]: [string, any], idx) => (
-                            <Scatter
+                          <Tooltip
+                            contentStyle={{
+                              backgroundColor: "white",
+                              border: "2px solid #938d7a",
+                              borderRadius: "8px",
+                              padding: "12px",
+                              boxShadow: "0 4px 6px rgba(0,0,0,0.1)",
+                            }}
+                          />
+                          <Legend />
+                          {Object.keys(performanceData.chart_data).map((sku, idx) => (
+                            <Line
                               key={sku}
+                              type="monotone"
+                              dataKey={sku}
+                              stroke={["#ef4444", "#10b981", "#f59e0b"][idx % 3]}
+                              strokeWidth={2}
                               name={sku}
-                              data={data}
-                              fill={["#ef4444", "#10b981", "#f59e0b"][idx % 3]}
+                              dot={{ fill: ["#ef4444", "#10b981", "#f59e0b"][idx % 3], r: 5 }}
+                              activeDot={{ r: 8, stroke: "white", strokeWidth: 2 }}
+                              connectNulls={false}
                             />
                           ))}
-                          <Legend />
-                        </ScatterChart>
+                        </LineChart>
                       </ResponsiveContainer>
                     </div>
 
