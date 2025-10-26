@@ -662,6 +662,30 @@ export default function AnalysisPage() {
                           <CartesianGrid strokeDasharray="3 3" stroke="#efece3" />
                           <XAxis dataKey="category" stroke="#938d7a" />
                           <YAxis stroke="#938d7a" />
+                          <Tooltip
+                            contentStyle={{
+                              backgroundColor: "white",
+                              border: "2px solid #938d7a",
+                              borderRadius: "8px",
+                              padding: "12px",
+                              boxShadow: "0 4px 6px rgba(0,0,0,0.1)",
+                            }}
+                            labelStyle={{
+                              color: "#938d7a",
+                              fontWeight: "600",
+                              marginBottom: "8px",
+                              fontSize: "14px",
+                            }}
+                            itemStyle={{
+                              color: "#1e1e1e",
+                              fontSize: "14px",
+                              padding: "4px 0",
+                            }}
+                            formatter={(value: any) => [value.toLocaleString(), "Total Stock"]}
+                            labelFormatter={(label) => `Category: ${label}`}
+                            cursor={{ fill: "rgba(147, 141, 122, 0.1)" }}
+                          />
+                          {/* </CHANGE> */}
                           <Legend />
                           <Bar dataKey="total_stock" fill="#938d7a" name="Total Stock" />
                         </BarChart>
@@ -1080,6 +1104,7 @@ export default function AnalysisPage() {
                                 color: "#938d7a",
                                 fontWeight: "600",
                                 marginBottom: "4px",
+                                fontSize: "14px",
                               }}
                               itemStyle={{
                                 color: "#1e1e1e",
