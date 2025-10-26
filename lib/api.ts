@@ -406,3 +406,19 @@ export async function checkBaseStock() {
     return { exists: false, has_data: false }
   }
 }
+
+export async function getSearchSuggestions(search: string) {
+  try {
+    return await apiFetch<{
+      success: boolean
+      suggestions: Array<{
+        value: string
+        type: string
+        label: string
+      }>
+    }>(`/analysis/search-suggestions?search=${encodeURIComponent(search)}`)
+  } catch (error) {
+    console.error("[v0] Failed to fetch search suggestions:", error)
+    return { success: false, suggestions: [] }
+  }
+}

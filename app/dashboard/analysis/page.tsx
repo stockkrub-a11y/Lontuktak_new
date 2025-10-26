@@ -38,6 +38,7 @@ import {
   getAnalysisTotalIncome,
   getAnalysisBaseSKUs,
   getAnalysisPerformanceProducts, // Added import for performance products
+  getSearchSuggestions, // Added import for search suggestions
 } from "@/lib/api"
 import { Button } from "@/components/ui/button" // Assuming Button component exists
 import { useMediaQuery } from "@/hooks/useMediaQuery" // Assuming useMediaQuery hook exists
@@ -119,10 +120,7 @@ export default function AnalysisPage() {
     }
 
     try {
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/analysis/search-suggestions?search=${encodeURIComponent(searchTerm)}`,
-      )
-      const data = await response.json()
+      const data = await getSearchSuggestions(searchTerm)
 
       if (data.success && data.suggestions.length > 0) {
         setSearchSuggestions(data.suggestions)

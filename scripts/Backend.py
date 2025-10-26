@@ -297,8 +297,9 @@ async def upload_stock_files(
             if not df_prev.empty:
                 base_stock_exists = True
                 print(f"[Backend] Loaded previous stock from database: {len(df_prev)} rows")
-        except:
-            print("[Backend] base_stock table doesn't exist yet")
+        except Exception as e: # More specific exception handling
+            print(f"[Backend] base_stock table doesn't exist or error during read: {str(e)}")
+            # No need to explicitly set df_prev to None here as it's handled by scope
         
         # If base_stock doesn't exist, require previous stock file
         if not base_stock_exists:
@@ -308,7 +309,8 @@ async def upload_stock_files(
                     detail="Previous stock file is required for first upload"
                 )
             prev_content = await previous_stock.read()
-            df_prev = pd.read_excel(io.BytesIO(prev_content), header=1)
+            # Use header=0 to correctly read Excel files without a skip row
+            df_prev = pd.read_excel(io.BytesIO(prev_content), header=0)
             print(f"[Backend] Previous stock loaded from file: {len(df_prev)} rows")
         
         df_curr = df_curr.rename(columns={
@@ -327,6 +329,7 @@ async def upload_stock_files(
         })
         df_curr["stock_level"] = pd.to_numeric(df_curr["stock_level"], errors='coerce').fillna(0).astype(int)
         df_prev["stock_level"] = pd.to_numeric(df_prev["stock_level"], errors='coerce').fillna(0).astype(int)
+        
         # Generate stock report
         print("[Backend] Generating stock report...")
         report_df = generate_stock_report(df_prev, df_curr)
@@ -373,7 +376,6 @@ async def upload_stock_files(
         
         print("[Backend] Updating base_stock table...")
         
-        # Create a mapping of product SKUs to their flags
         flag_map = dict(zip(report_df['Product_SKU'], report_df['flag']))
         counter_map = dict(zip(report_df['Product_SKU'], report_df['unchanged_counter']))
         
