@@ -86,13 +86,25 @@ export default function AnalysisPage() {
   const isMobile = useMediaQuery("(max-width: 768px)")
 
   const CustomHistoricalTooltip = ({ active, payload, label }: any) => {
+    console.log("[v0] ===== TOOLTIP DEBUG =====")
+    console.log("[v0] Active:", active)
+    console.log("[v0] Label:", label)
+    console.log("[v0] Payload:", JSON.stringify(payload, null, 2))
+
     if (active && payload && payload.length > 0) {
+      console.log("[v0] Payload[0]:", JSON.stringify(payload[0], null, 2))
+      console.log("[v0] Payload[0].payload:", JSON.stringify(payload[0].payload, null, 2))
+
       // Get the data directly from the payload - this is the actual data point being hovered
       const dataPoint = payload[0].payload
 
       if (dataPoint && dataPoint.product_name && dataPoint.stock_level !== undefined) {
         const fullProductName = dataPoint.product_name
         const stockLevel = dataPoint.stock_level
+
+        console.log("[v0] Displaying - Product:", fullProductName)
+        console.log("[v0] Displaying - Stock:", stockLevel)
+        console.log("[v0] ===== END TOOLTIP DEBUG =====")
 
         return (
           <div
@@ -132,6 +144,9 @@ export default function AnalysisPage() {
         )
       }
     }
+
+    console.log("[v0] Tooltip not rendering - conditions not met")
+    console.log("[v0] ===== END TOOLTIP DEBUG =====")
     return null
   }
 
