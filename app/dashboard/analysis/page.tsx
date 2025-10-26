@@ -86,11 +86,11 @@ export default function AnalysisPage() {
   const isMobile = useMediaQuery("(max-width: 768px)")
 
   const CustomHistoricalTooltip = ({ active, payload, label }: any) => {
-    if (active && payload && payload.length > 0 && historicalData) {
-      // Find the correct data point using the label (display_name)
-      const dataPoint = historicalData.chart_data.find((item: any) => item.display_name === label)
+    if (active && payload && payload.length > 0) {
+      // Get the data directly from the payload - this is the actual data point being hovered
+      const dataPoint = payload[0].payload
 
-      if (dataPoint) {
+      if (dataPoint && dataPoint.product_name && dataPoint.stock_level !== undefined) {
         const fullProductName = dataPoint.product_name
         const stockLevel = dataPoint.stock_level
 
