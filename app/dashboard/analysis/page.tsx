@@ -86,53 +86,51 @@ export default function AnalysisPage() {
   const isMobile = useMediaQuery("(max-width: 768px)")
 
   const CustomHistoricalTooltip = ({ active, payload, label }: any) => {
-    console.log("[v0] Tooltip active:", active)
-    console.log("[v0] Tooltip payload:", payload)
-    console.log("[v0] Tooltip label:", label)
+    if (active && payload && payload.length > 0 && historicalData) {
+      // Find the correct data point using the label (display_name)
+      const dataPoint = historicalData.chart_data.find((item: any) => item.display_name === label)
 
-    if (active && payload && payload.length > 0) {
-      const dataPoint = payload[0].payload
-      const fullProductName = dataPoint.product_name || label
-      const stockLevel = dataPoint.stock_level || payload[0].value
+      if (dataPoint) {
+        const fullProductName = dataPoint.product_name
+        const stockLevel = dataPoint.stock_level
 
-      console.log("[v0] Displaying - Product:", fullProductName, "Stock:", stockLevel)
-
-      return (
-        <div
-          style={{
-            backgroundColor: "white",
-            border: "2px solid #938d7a",
-            borderRadius: "8px",
-            padding: "12px",
-            boxShadow: "0 4px 6px rgba(0,0,0,0.1)",
-            maxWidth: "400px",
-          }}
-        >
-          <p
+        return (
+          <div
             style={{
-              color: "#938d7a",
-              fontWeight: "600",
-              marginBottom: "8px",
-              fontSize: "14px",
-              wordWrap: "break-word",
-              whiteSpace: "normal",
-              lineHeight: "1.5",
+              backgroundColor: "white",
+              border: "2px solid #938d7a",
+              borderRadius: "8px",
+              padding: "12px",
+              boxShadow: "0 4px 6px rgba(0,0,0,0.1)",
+              maxWidth: "400px",
             }}
           >
-            {fullProductName}
-          </p>
-          <p
-            style={{
-              color: "#1e1e1e",
-              fontSize: "14px",
-              padding: "4px 0",
-              fontWeight: "600",
-            }}
-          >
-            Stock Level: <span style={{ fontWeight: "400" }}>{stockLevel.toLocaleString()}</span>
-          </p>
-        </div>
-      )
+            <p
+              style={{
+                color: "#938d7a",
+                fontWeight: "600",
+                marginBottom: "8px",
+                fontSize: "14px",
+                wordWrap: "break-word",
+                whiteSpace: "normal",
+                lineHeight: "1.5",
+              }}
+            >
+              {fullProductName}
+            </p>
+            <p
+              style={{
+                color: "#1e1e1e",
+                fontSize: "14px",
+                padding: "4px 0",
+                fontWeight: "600",
+              }}
+            >
+              Stock Level: <span style={{ fontWeight: "400" }}>{stockLevel.toLocaleString()}</span>
+            </p>
+          </div>
+        )
+      }
     }
     return null
   }
