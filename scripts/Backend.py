@@ -1053,27 +1053,30 @@ async def get_total_income(product_sku: str = "", category: str = ""):
         print(f"[Backend] Fetching total income data (product_sku={product_sku}, category={category})...")
         
         # Build WHERE clause based on filters
-        where_conditions = ["total_quantity IS NOT NULL"]
+        where_conditions = ["bd.total_quantity IS NOT NULL"]
+        joins = ""
+        
         if product_sku:
-            where_conditions.append(f"product_sku = '{product_sku}'")
+            where_conditions.append(f"bd.product_sku = '{product_sku}'")
+        
         if category:
-            # Need to join with all_products to filter by category
-            # For now, this part is not implemented as per the original code structure.
-            # A proper implementation would involve a JOIN operation.
-            pass 
+            # Join with base_stock to filter by category
+            joins = 'INNER JOIN base_stock bs ON bd.product_sku = bs.product_sku'
+            where_conditions.append(f"bs.\"หมวดหมู่\" = '{category}'")
         
         where_clause = " AND ".join(where_conditions)
         
         # Query to get monthly sales totals
         query = text(f"""
             SELECT 
-                sales_year,
-                sales_month,
-                SUM(total_quantity) as total_quantity
-            FROM base_data
+                bd.sales_year,
+                bd.sales_month,
+                SUM(bd.total_quantity) as total_quantity
+            FROM base_data bd
+            {joins}
             WHERE {where_clause}
-            GROUP BY sales_year, sales_month
-            ORDER BY sales_year, sales_month
+            GROUP BY bd.sales_year, bd.sales_month
+            ORDER BY bd.sales_year, bd.sales_month
         """)
         
         with engine.connect() as conn:
@@ -1100,13 +1103,14 @@ async def get_total_income(product_sku: str = "", category: str = ""):
         # Query to get product-level sales data
         product_query = text(f"""
             SELECT 
-                product_name,
-                product_sku,
-                AVG(total_quantity) as avg_monthly_quantity,
-                SUM(total_quantity) as total_quantity
-            FROM base_data
-            WHERE {where_clause} AND product_name IS NOT NULL
-            GROUP BY product_name, product_sku
+                bd.product_name,
+                bd.product_sku,
+                AVG(bd.total_quantity) as avg_monthly_quantity,
+                SUM(bd.total_quantity) as total_quantity
+            FROM base_data bd
+            {joins}
+            WHERE {where_clause} AND bd.product_name IS NOT NULL
+            GROUP BY bd.product_name, bd.product_sku
             ORDER BY total_quantity DESC
         """)
         
@@ -1127,7 +1131,7 @@ async def get_total_income(product_sku: str = "", category: str = ""):
         # Calculate grand total
         grand_total = sum(item["total_income"] for item in chart_data)
         
-        print(f"[Backend] ✅ Total quantity sold: {grand_total:,.0f} units")
+        print(f"[Backend] ✅ Total quantity sold: {grand_total:,.0f} units (filters: product_sku={product_sku}, category={category})")
         
         return {
             "success": True,
