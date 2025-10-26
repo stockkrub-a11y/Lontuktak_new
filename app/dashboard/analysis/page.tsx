@@ -767,7 +767,7 @@ export default function AnalysisPage() {
                               cursor={{ fill: "rgba(147, 141, 122, 0.1)" }}
                             />
                             <Legend />
-                            <Bar dataKey="stock_level" fill="#938d7a" name="Stock Level" />
+                            <Bar dataKey="stock_level" fill="#938d7a" name="Stock Level" barSize={80} />
                           </BarChart>
                         )}
                       </ResponsiveContainer>
