@@ -857,11 +857,13 @@ async def get_analysis_historical_sales(sku: str = Query(..., description="Produ
                         "search_type": "category"
                     }
                 
-                # Format chart data for bar chart (product names on X-axis)
                 chart_data = []
                 for _, row in df.iterrows():
+                    full_name = row['product_name']
+                    display_name = full_name[:30] + "..." if len(full_name) > 30 else full_name
                     chart_data.append({
-                        "product_name": row['product_name'][:30] + "..." if len(row['product_name']) > 30 else row['product_name'],
+                        "product_name": full_name,  # Full name for tooltip
+                        "display_name": display_name,  # Truncated name for X-axis
                         "stock_level": int(row['stock_level'])
                     })
                 

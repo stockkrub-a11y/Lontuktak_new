@@ -87,7 +87,6 @@ export default function AnalysisPage() {
 
   const CustomHistoricalTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length > 0) {
-      // Access the full product name from the payload data
       const fullProductName = payload[0].payload.product_name || label
       const stockLevel = payload[0].value
 
@@ -99,7 +98,7 @@ export default function AnalysisPage() {
             borderRadius: "8px",
             padding: "12px",
             boxShadow: "0 4px 6px rgba(0,0,0,0.1)",
-            maxWidth: "350px",
+            maxWidth: "400px",
           }}
         >
           <p
@@ -110,7 +109,7 @@ export default function AnalysisPage() {
               fontSize: "14px",
               wordWrap: "break-word",
               whiteSpace: "normal",
-              lineHeight: "1.4",
+              lineHeight: "1.5",
             }}
           >
             {fullProductName}
@@ -779,7 +778,7 @@ export default function AnalysisPage() {
                           <BarChart data={historicalData.chart_data}>
                             <CartesianGrid strokeDasharray="3 3" stroke="#efece3" />
                             <XAxis
-                              dataKey="product_name"
+                              dataKey="display_name"
                               stroke="#938d7a"
                               label={{ value: "Product Name", position: "insideBottom", offset: -5, fill: "#938d7a" }}
                               angle={-45}
