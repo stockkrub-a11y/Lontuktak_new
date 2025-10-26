@@ -85,6 +85,49 @@ export default function AnalysisPage() {
 
   const isMobile = useMediaQuery("(max-width: 768px)")
 
+  const CustomHistoricalTooltip = ({ active, payload, label }: any) => {
+    if (active && payload && payload.length) {
+      return (
+        <div
+          style={{
+            backgroundColor: "white",
+            border: "2px solid #938d7a",
+            borderRadius: "8px",
+            padding: "12px",
+            boxShadow: "0 4px 6px rgba(0,0,0,0.1)",
+            maxWidth: "300px",
+          }}
+        >
+          <p
+            style={{
+              color: "#938d7a",
+              fontWeight: "600",
+              marginBottom: "8px",
+              fontSize: "14px",
+              wordWrap: "break-word",
+              whiteSpace: "normal",
+            }}
+          >
+            {label}
+          </p>
+          {payload.map((entry: any, index: number) => (
+            <p
+              key={`item-${index}`}
+              style={{
+                color: "#1e1e1e",
+                fontSize: "14px",
+                padding: "4px 0",
+              }}
+            >
+              <span style={{ fontWeight: "600" }}>{entry.name}:</span> {entry.value.toLocaleString()}
+            </p>
+          ))}
+        </div>
+      )
+    }
+    return null
+  }
+
   const loadHistoricalSales = async () => {
     if (!selectedBaseSku.trim()) {
       return
@@ -745,25 +788,7 @@ export default function AnalysisPage() {
                               label={{ value: "Stock Level", angle: -90, position: "insideLeft", fill: "#938d7a" }}
                             />
                             <Tooltip
-                              contentStyle={{
-                                backgroundColor: "white",
-                                border: "2px solid #938d7a",
-                                borderRadius: "8px",
-                                padding: "12px",
-                                boxShadow: "0 4px 6px rgba(0,0,0,0.1)",
-                              }}
-                              labelStyle={{
-                                color: "#938d7a",
-                                fontWeight: "600",
-                                marginBottom: "8px",
-                                fontSize: "14px",
-                              }}
-                              itemStyle={{
-                                color: "#1e1e1e",
-                                fontSize: "14px",
-                                padding: "4px 0",
-                              }}
-                              formatter={(value: any) => [value.toLocaleString(), "Stock Level"]}
+                              content={<CustomHistoricalTooltip />}
                               cursor={{ fill: "rgba(147, 141, 122, 0.1)" }}
                             />
                             <Legend />
