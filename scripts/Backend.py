@@ -855,18 +855,17 @@ async def get_analysis_performance(request: dict):
             return {"success": False, "message": "No SKUs provided", "chart_data": {}, "table_data": []}
         
         try:
-            # Build query to get sales data for selected SKUs from base_data
             placeholders = ', '.join([f':sku{i}' for i in range(len(sku_list))])
             query = text(f"""
                 SELECT 
-                    item as "Item",
+                    product_sku as "Item",
                     product_name as "Product_name",
                     EXTRACT(MONTH FROM sales_date) as month,
-                    SUM(quantity) as "Quantity"
+                    SUM(total_quantity) as "Quantity"
                 FROM base_data
-                WHERE item IN ({placeholders})
-                GROUP BY item, product_name, EXTRACT(MONTH FROM sales_date)
-                ORDER BY item, month
+                WHERE product_sku IN ({placeholders})
+                GROUP BY product_sku, product_name, EXTRACT(MONTH FROM sales_date)
+                ORDER BY product_sku, month
             """)
             
             # Create params dict
