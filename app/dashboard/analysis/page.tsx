@@ -86,7 +86,11 @@ export default function AnalysisPage() {
   const isMobile = useMediaQuery("(max-width: 768px)")
 
   const CustomHistoricalTooltip = ({ active, payload, label }: any) => {
-    if (active && payload && payload.length) {
+    if (active && payload && payload.length > 0) {
+      // Access the full product name from the payload data
+      const fullProductName = payload[0].payload.product_name || label
+      const stockLevel = payload[0].value
+
       return (
         <div
           style={{
@@ -95,7 +99,7 @@ export default function AnalysisPage() {
             borderRadius: "8px",
             padding: "12px",
             boxShadow: "0 4px 6px rgba(0,0,0,0.1)",
-            maxWidth: "300px",
+            maxWidth: "350px",
           }}
         >
           <p
@@ -106,22 +110,21 @@ export default function AnalysisPage() {
               fontSize: "14px",
               wordWrap: "break-word",
               whiteSpace: "normal",
+              lineHeight: "1.4",
             }}
           >
-            {label}
+            {fullProductName}
           </p>
-          {payload.map((entry: any, index: number) => (
-            <p
-              key={`item-${index}`}
-              style={{
-                color: "#1e1e1e",
-                fontSize: "14px",
-                padding: "4px 0",
-              }}
-            >
-              <span style={{ fontWeight: "600" }}>{entry.name}:</span> {entry.value.toLocaleString()}
-            </p>
-          ))}
+          <p
+            style={{
+              color: "#1e1e1e",
+              fontSize: "14px",
+              padding: "4px 0",
+              fontWeight: "600",
+            }}
+          >
+            Stock Level: <span style={{ fontWeight: "400" }}>{stockLevel.toLocaleString()}</span>
+          </p>
         </div>
       )
     }
