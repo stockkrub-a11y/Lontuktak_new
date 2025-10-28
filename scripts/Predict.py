@@ -113,10 +113,14 @@ def update_model_and_train(df):
     y_test = test['total_quantity']
 
     # Load or tune model
-    if os.path.exists(MODEL_FILE):
-        print("Loading existing model...")
-        base_model = joblib.load(MODEL_FILE)
-    else:
+    try:
+        if os.path.exists(MODEL_FILE):
+            print("Loading existing model...")
+            base_model = joblib.load(MODEL_FILE)
+        else:
+            raise FileNotFoundError("Model file not found")
+    except Exception as e:
+        print(f"Could not load existing model ({str(e)}). Training new model...")
         print("Tuning XGBoost model with Optuna...")
         best_params = tune_xgboost(X_train, y_train, n_trials=1)
 

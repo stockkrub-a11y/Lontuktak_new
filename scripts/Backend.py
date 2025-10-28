@@ -192,7 +192,7 @@ async def test_database():
 # NOTIFICATIONS ENDPOINTS
 # ============================================================================
 
-@app.get("/api/notifications")
+@app.get("/notifications")
 async def get_notifications():
     """Get inventory notifications from stock_notifications table"""
     print("\n" + "="*80, flush=True)
