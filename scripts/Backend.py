@@ -13,7 +13,7 @@ import time
 import joblib
 
 # Import local modules
-from Auto_cleaning import auto_cleaning
+from Auto_cleaning import auto_cleaning, load_excel_with_fallback_bytes
 from DB_server import engine
 from Predict import update_model_and_train, forcast_loop, Evaluate
 from Notification import generate_stock_report, update_manual_values
@@ -45,7 +45,9 @@ app.add_middleware(
         "http://localhost:3000",
         "http://127.0.0.1:3000",
         "http://localhost:3001",
-        "http://127.0.0.1:3001"
+        "http://127.0.0.1:3001",
+        "https://unridiculous-dolores-epidemically.ngrok-free.dev",  # your ngrok frontend
+        "http://localhost:8000",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -61,6 +63,31 @@ async def startup_event():
     print(f"✅ Database engine available: {engine is not None}", flush=True)
     print("="*80 + "\n", flush=True)
     sys.stdout.flush()
+
+    # Run quick migration/normalization for stock_notifications table so column casing
+    # mismatches don't break endpoints. This is idempotent and safe to run multiple times.
+    try:
+        with engine.connect() as conn:
+            cols = conn.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name = 'stock_notifications'") ).fetchall()
+            existing = {c[0] for c in cols}
+            print(f"[Startup] stock_notifications existing columns: {sorted(existing)}", flush=True)
+
+            # If lowercase product_sku exists but quoted Product_SKU doesn't, add Product_SKU and copy values
+            if 'product_sku' in existing and 'Product_SKU' not in existing:
+                print("[Startup] Adding quoted column \"Product_SKU\" and copying from product_sku", flush=True)
+                conn.execute(text('ALTER TABLE stock_notifications ADD COLUMN "Product_SKU" VARCHAR(255)'))
+                conn.execute(text('UPDATE stock_notifications SET "Product_SKU" = product_sku'))
+
+            # If Product exists but product (lower) doesn't, create lower-case copies for safer queries
+            if 'Product' in existing and 'product' not in existing:
+                try:
+                    print("[Startup] Creating lowercase 'product' column from \"Product\"", flush=True)
+                    conn.execute(text("ALTER TABLE stock_notifications ADD COLUMN product VARCHAR(255)"))
+                    conn.execute(text('UPDATE stock_notifications SET product = "Product"'))
+                except Exception as e:
+                    print(f"[Startup] Warning while creating product lowercase column: {e}", flush=True)
+    except Exception as e:
+        print(f"[Startup] Migration check failed: {e}", flush=True)
 
 # ============================================================================
 # HEALTH CHECK
@@ -282,26 +309,28 @@ async def upload_stock_files(
     try:
         print("[Backend] Processing stock upload...")
         
-        # Read current stock file
+        # Read current stock file using fallback header detection (handles CSV/XLSX with odd headers)
         current_content = await current_stock.read()
-        df_curr = pd.read_excel(io.BytesIO(current_content))
-        print(f"[Backend] Current stock loaded: {len(df_curr)} rows")
-        
-        # Check if base_stock exists
+        try:
+            df_curr, curr_header = load_excel_with_fallback_bytes(current_content)
+            print(f"[Backend] Current stock loaded (detected header={curr_header}): {len(df_curr)} rows")
+        except Exception as e:
+            print(f"[Backend] Failed to parse current stock file: {e}")
+            raise HTTPException(status_code=400, detail="Unable to parse current stock file")
+
+        # Check if base_stock exists and attempt to load previous stock from DB
         base_stock_exists = False
         df_prev = None
-        
         try:
             query = "SELECT * FROM base_stock ORDER BY updated_at DESC"
             df_prev = pd.read_sql(query, engine)
             if not df_prev.empty:
                 base_stock_exists = True
                 print(f"[Backend] Loaded previous stock from database: {len(df_prev)} rows")
-        except Exception as e: # More specific exception handling
+        except Exception as e:
             print(f"[Backend] base_stock table doesn't exist or error during read: {str(e)}")
-            # No need to explicitly set df_prev to None here as it's handled by scope
-        
-        # If base_stock doesn't exist, require previous stock file
+
+        # If base_stock doesn't exist, require previous stock file and parse with fallback
         if not base_stock_exists:
             if not previous_stock:
                 raise HTTPException(
@@ -309,13 +338,18 @@ async def upload_stock_files(
                     detail="Previous stock file is required for first upload"
                 )
             prev_content = await previous_stock.read()
-            # Use header=0 to correctly read Excel files without a skip row
-            df_prev = pd.read_excel(io.BytesIO(prev_content), header=0)
-            print(f"[Backend] Previous stock loaded from file: {len(df_prev)} rows")
+            try:
+                df_prev, prev_header = load_excel_with_fallback_bytes(prev_content)
+                print(f"[Backend] Previous stock loaded from file (detected header={prev_header}): {len(df_prev)} rows")
+            except Exception as e:
+                print(f"[Backend] Failed to parse previous stock file: {e}")
+                raise HTTPException(status_code=400, detail="Unable to parse previous stock file")
         
         df_curr = df_curr.rename(columns={
             'ชื่อสินค้า': 'product_name',
             'รหัสสินค้า': 'product_sku',
+            'Product_SKU': 'product_sku',
+            'Product_name': 'product_name',
             'จำนวนคงเหลือ': 'stock_level',
             'จำนวน': 'stock_level',
             'หมวดหมู่': 'category'
@@ -323,6 +357,8 @@ async def upload_stock_files(
         df_prev = df_prev.rename(columns={
             'ชื่อสินค้า': 'product_name',
             'รหัสสินค้า': 'product_sku',
+            'Product_SKU': 'product_sku',
+            'Product_name': 'product_name',
             'จำนวนคงเหลือ': 'stock_level',
             'จำนวน': 'stock_level',
             'หมวดหมู่': 'category'
@@ -446,17 +482,68 @@ async def update_manual_values_endpoint(
         if not engine:
             raise HTTPException(status_code=500, detail="Database not available")
         
-        query = text("SELECT * FROM stock_notifications WHERE Product_SKU = :sku")
-        df_notification = pd.read_sql(query, engine, params={"sku": product_sku})
-        
+        # Detect which column holds the SKU in stock_notifications, then SELECT using that column
+        try:
+            cols_res = engine.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name = 'stock_notifications'")).fetchall()
+            existing_cols = [c[0] for c in cols_res]
+            print(f"[Backend] detected stock_notifications columns: {existing_cols}")
+        except Exception as e:
+            print(f"[Backend] Failed to fetch information_schema columns: {e}")
+            existing_cols = []
+
+        # Prefer SKU-like columns in this order
+        preferred = ['Product_SKU', 'product_sku', 'Product', 'product']
+        sku_col = None
+        for p in preferred:
+            if p in existing_cols:
+                sku_col = p
+                break
+
+        # fallback: any column name containing 'sku'
+        if sku_col is None:
+            for c in existing_cols:
+                if 'sku' in c.lower():
+                    sku_col = c
+                    break
+
+        if sku_col is None:
+            raise HTTPException(status_code=404, detail=f"No SKU column found in stock_notifications table")
+
+        # Build safe SELECT using the exact column name (quote it)
+        select_sql = text(f'SELECT * FROM stock_notifications WHERE "{sku_col}" = :sku')
+        try:
+            df_notification = pd.read_sql(select_sql, engine, params={"sku": product_sku})
+        except Exception as e:
+            print(f"[Backend] SELECT by SKU failed using column {sku_col}: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+
+        print(f"[Backend] stock_notifications columns after select: {df_notification.columns.tolist()}")
+
         if df_notification.empty:
             raise HTTPException(status_code=404, detail=f"Product {product_sku} not found in notifications")
-        
+
         row = df_notification.iloc[0]
-        
-        # Get values from the row
-        stock = row['Stock']
-        last_stock = row['Last_Stock']
+
+        # Normalize column name lookup (case-insensitive) for stock/last_stock
+        def find_col(cols, name_lower):
+            for c in cols:
+                if c.lower() == name_lower:
+                    return c
+            return None
+
+        cols = df_notification.columns.tolist()
+        stock_col = find_col(cols, 'stock') or find_col(cols, 'quantity') or 'Stock'
+        last_stock_col = find_col(cols, 'last_stock') or 'Last_Stock'
+
+        # Get values from the row safely
+        try:
+            stock = int(row.get(stock_col, row.get('Stock', 0) or 0))
+        except Exception:
+            stock = int(row.get('Stock', 0) or 0)
+        try:
+            last_stock = int(row.get(last_stock_col, row.get('Last_Stock', stock) or stock))
+        except Exception:
+            last_stock = int(row.get('Last_Stock', stock) or stock)
         weekly_sale = max((last_stock - stock), 1)
         decrease_rate = ((last_stock - stock) / last_stock * 100) if last_stock > 0 else 0
         weeks_to_empty = stock / weekly_sale if weekly_sale > 0 else 0
@@ -496,16 +583,36 @@ async def update_manual_values_endpoint(
             new_status = 'Green'
             new_description = 'Stock is sufficient'
         
-        update_query = text("""
+        # Determine actual column names in DB (case-insensitive match)
+        def pick_col(cols, *candidates_lower):
+            for cand in candidates_lower:
+                for c in cols:
+                    if c.lower() == cand.lower():
+                        return c
+            return None
+
+        cols = df_notification.columns.tolist()
+        col_minstock = pick_col(cols, 'minstock', 'MinStock') or 'MinStock'
+        col_buffer = pick_col(cols, 'buffer', 'Buffer') or 'Buffer'
+        col_reorder = pick_col(cols, 'reorder_qty', 'Reorder_Qty') or 'Reorder_Qty'
+        col_status = pick_col(cols, 'status', 'Status') or 'Status'
+        col_description = pick_col(cols, 'description', 'Description') or 'Description'
+        col_sku = pick_col(cols, 'product_sku', 'Product_SKU') or 'Product_SKU'
+
+        print(f"[Backend] Updating columns: {col_minstock}, {col_buffer}, {col_reorder}, {col_status}, {col_description} WHERE {col_sku}={product_sku}")
+
+        update_sql = f'''
             UPDATE stock_notifications
-            SET "MinStock" = :minstock,
-                "Buffer" = :buffer,
-                "Reorder_Qty" = :reorder_qty,
-                "Status" = :status,
-                "Description" = :description
-            WHERE "Product_SKU" = :sku
-        """)
-        
+            SET "{col_minstock}" = :minstock,
+                "{col_buffer}" = :buffer,
+                "{col_reorder}" = :reorder_qty,
+                "{col_status}" = :status,
+                "{col_description}" = :description
+            WHERE "{col_sku}" = :sku
+        '''
+
+        update_query = text(update_sql)
+
         with engine.begin() as conn:
             conn.execute(update_query, {
                 "minstock": new_minstock,

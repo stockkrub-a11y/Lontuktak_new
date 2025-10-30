@@ -1,7 +1,44 @@
 import os
+import io
 import pandas as pd
 from math import ceil
 from sqlalchemy import text, Integer, inspect
+
+
+def load_excel_with_fallback_bytes(content_bytes, possible_headers=[0,1,2,3]):
+    """Read uploaded CSV/Excel bytes and try multiple header rows to find the SKU column.
+
+    Returns (df, used_header). Tries CSV parsing first, then Excel if CSV parsing fails.
+    """
+    from io import BytesIO
+    sku_candidates = ["รหัสสินค้า", "เลขอ้างอิง SKU (SKU Reference No.)", "Product_SKU"]
+
+    # Try reading as CSV with different header rows
+    for h in possible_headers:
+        try:
+            df = pd.read_csv(BytesIO(content_bytes), header=h)
+            df.columns = df.columns.str.strip()
+            for candidate in sku_candidates:
+                if candidate in df.columns:
+                    df = df.rename(columns={candidate: "Product_SKU"}).copy()
+                    return df, h
+        except Exception:
+            # not a CSV or failed to parse with this header; try next
+            pass
+
+    # Try reading as Excel with different header rows
+    for h in possible_headers:
+        try:
+            df = pd.read_excel(BytesIO(content_bytes), header=h)
+            df.columns = df.columns.str.strip()
+            for candidate in sku_candidates:
+                if candidate in df.columns:
+                    df = df.rename(columns={candidate: "Product_SKU"}).copy()
+                    return df, h
+        except Exception:
+            pass
+
+    raise ValueError("❌ Could not find SKU column (รหัสสินค้า or เลขอ้างอิง SKU)")
 
 def check_db_status(engine):
     """
